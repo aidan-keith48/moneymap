@@ -492,9 +492,41 @@ function rowEl(items,it,changed,rerender){
   return wrap;
 }
 
+/* ---------- backup ---------- */
+function exportData(){
+  const url=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
+  const a=h('a',{href:url,download:`moneymap-${new Date().toISOString().slice(0,10)}.json`});
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Rebuild the state from known fields only: a backup file is untrusted input.
+function cleanImport(d){
+  const CODE=/^[A-Z0-9]{1,5}$/;
+  if(!d||typeof d!=='object'||!Array.isArray(d.income)||!Array.isArray(d.nodes)||!CODE.test(d.base))throw new Error('bad file');
+  const text=(v,max)=>String(v??'').slice(0,max);
+  const items=list=>(Array.isArray(list)?list:[]).filter(i=>i&&typeof i==='object').map(i=>{
+    const r=num(i.rate);
+    return item(text(i.name,200),num(i.amount),CODE.test(i.cur)?i.cur:d.base,r>0?r:null);
+  });
+  const offsets={};
+  const keepOffset=(from,to)=>{
+    const o=d.offsets&&Object.hasOwn(d.offsets,from)?d.offsets[from]:null;
+    if(Array.isArray(o)&&Number.isFinite(o[0])&&Number.isFinite(o[1]))offsets[to]=[o[0],o[1]];
+  };
+  keepOffset('hub','hub');
+  const nodes=d.nodes.filter(n=>n&&typeof n==='object').map((n,i)=>{
+    const id=uid();keepOffset(n.id,id);
+    return {id,title:text(n.title,40),color:/^#[0-9a-f]{3,8}$/i.test(n.color)?n.color:PALETTE[i%PALETTE.length],items:items(n.items)};
+  });
+  const rates={};
+  for(const [c,v] of Object.entries(d.rates&&typeof d.rates==='object'?d.rates:{}))if(CODE.test(c)&&c!==d.base&&num(v)>0)rates[c]=num(v);
+  return {base:d.base,rates,income:items(d.income),nodes,offsets};
+}
+
 /* ---------- settings ---------- */
 function buildSettings(){
   const list=h('div',{class:'list'});
+  let dataMsg='';
   const render=()=>{
     list.replaceChildren();
     list.append(
@@ -537,12 +569,30 @@ function buildSettings(){
       if(!armed){armed=true;fresh.textContent='Tap again to wipe';fresh.classList.add('armed');t=setTimeout(()=>{armed=false;fresh.textContent='Start fresh';fresh.classList.remove('armed')},2600);return}
       clearTimeout(t);S={base:S.base,rates:S.rates,income:[],nodes:[]};lastCount=-1;commit();render();
     }});
+    const file=h('input',{type:'file',accept:'.json,application/json',id:'import-file',hidden:true,onchange:async e=>{
+      const f=e.target.files[0];if(!f)return;
+      try{
+        if(f.size>2e6)throw new Error('too big');
+        S=cleanImport(JSON.parse(await f.text()));
+        lastCount=-1;commit();dataMsg='Backup imported.';
+      }catch(err){dataMsg='That file is not a valid Moneymap backup. Nothing was changed.'}
+      render();
+    }});
+    let importArmed=false,importTimer;
+    const importBtn=h('button',{class:'btn',id:'import',textContent:'Import backup',onclick:()=>{
+      if(!importArmed){importArmed=true;importBtn.textContent='Tap again to replace all';importBtn.classList.add('danger','armed');importBtn.style.marginLeft='0';importTimer=setTimeout(()=>{importArmed=false;importBtn.textContent='Import backup';importBtn.classList.remove('danger','armed')},2600);return}
+      clearTimeout(importTimer);importArmed=false;importBtn.textContent='Import backup';importBtn.classList.remove('danger','armed');
+      file.click();
+    }});
     list.append(
       h('div',{class:'sec',textContent:'Layout'}),
       h('div',{class:'note',textContent:'Drag any circle to move it. This puts them all back in their original spots.'}),
       h('div',null,h('button',{class:'btn',id:'reset-layout',textContent:'Reset layout',onclick:()=>{S.offsets={};commit();fit()}})),
       h('div',{class:'sec',textContent:'Data'}),
-      h('div',{class:'note',textContent:'Everything is saved in this browser only. The example data is made up.'}),
+      h('div',{class:'note',textContent:'Everything is saved in this browser only. The example data is made up. Export a backup file to keep a copy or move to another device. Importing replaces everything here.'}),
+      h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
+        h('button',{class:'btn',id:'export',textContent:'Export backup',onclick:exportData}),importBtn,file),
+      h('div',{class:'note',id:'data-msg',role:'status',textContent:dataMsg}),
       h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
         h('button',{class:'btn',id:'sample',textContent:'Load example data',onclick:()=>{S=sample();lastCount=-1;commit();render()}}),fresh)
     );
