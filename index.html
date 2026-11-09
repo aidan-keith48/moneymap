@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Moneymap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one gold income hub in the middle, expense circles orbiting it on elliptical rings, tap a circle and it morphs into a rounded card. Single dark theme by choice. */
+:root{
+  color-scheme:dark;
+  --bg:#08080a;
+  --panel:#13120f;
+  --ink:#f3efe6;
+  --mute:#8f8a7e;
+  --line:#2b2923;
+  --gold:#e3b93c;
+  --good:#79d69b;
+  --bad:#ff7d6e;
+  --display:'Bricolage Grotesque',system-ui,sans-serif;
+  --body:'Instrument Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select{font:inherit;color:var(--ink)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+#stage{position:fixed;inset:0;touch-action:none;cursor:grab;
+  background:radial-gradient(circle,#1d1c18 1px,transparent 1.2px) 0 0/26px 26px,var(--bg)}
+#stage:active{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#lines{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.flow{stroke-dasharray:1.5 16;stroke-linecap:round;animation:flow 1.6s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-17.5}}
+
+.node{position:absolute;border-radius:50%;cursor:pointer;transition:transform .18s ease}
+.node:hover{transform:scale(1.05)}
+.node:active{transform:scale(.97)}
+.node .in{width:100%;height:100%;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:8px;text-align:center;background:#0e0d0b;border:2px solid var(--c);
+  box-shadow:0 0 0 0 var(--c);animation:float 7s ease-in-out infinite;animation-delay:var(--d)}
+.node:hover .in{box-shadow:0 0 30px -8px var(--c)}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.n-title{font-size:12px;font-weight:600;line-height:1.15;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.n-amt{font-family:var(--display);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--c)}
+.hub .in{background:radial-gradient(circle at 50% 35%,#2a2208,#0e0d0b 70%);border-width:3px}
+.hub .n-title{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.hub .n-amt{font-size:21px;color:var(--ink)}
+.hub .n-left{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+
+.bar{position:fixed;left:0;right:0;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:0 max(16px,env(safe-area-inset-left)) 0 max(16px,env(safe-area-inset-right));pointer-events:none;z-index:5}
+.bar>*{pointer-events:auto}
+#top{top:max(14px,env(safe-area-inset-top))}
+#bottom{bottom:max(14px,env(safe-area-inset-bottom))}
+.brand{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.01em}
+.brand i{color:var(--gold);font-style:normal}
+.round{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:#141310;display:grid;place-items:center;font-size:18px}
+.round:hover{border-color:var(--mute)}
+.tools{display:flex;gap:8px}
+.pill{flex:1;max-width:520px;display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:#121110ee;border-radius:30px;padding:8px 8px 8px 18px;backdrop-filter:blur(8px)}
+.stats{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;min-width:0}
+.stat small{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.stat b{display:block;font-family:var(--display);font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.add{width:46px;height:46px;border-radius:50%;border:0;background:var(--gold);color:#17130a;font-size:26px;line-height:1;font-weight:500;flex:none}
+.add:hover{filter:brightness(1.1)}
+#hint{position:fixed;left:0;right:0;top:62%;text-align:center;color:var(--mute);font-size:14px;pointer-events:none;display:none;padding:0 24px}
+
+/* card */
+#scrim{position:fixed;inset:0;background:#000a;opacity:0;transition:opacity .35s ease;z-index:20}
+#card{position:fixed;z-index:21;background:var(--panel);border:2px solid var(--c,var(--gold));overflow:hidden;
+  transition:left .42s cubic-bezier(.2,.8,.2,1),top .42s cubic-bezier(.2,.8,.2,1),width .42s cubic-bezier(.2,.8,.2,1),height .42s cubic-bezier(.2,.8,.2,1),border-radius .42s cubic-bezier(.2,.8,.2,1),opacity .3s ease,transform .3s ease;
+  box-shadow:0 30px 80px -20px #000}
+.cbody{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transition:opacity .25s ease .18s}
+.cbody.show{opacity:1}
+.chead{display:flex;align-items:center;gap:10px;padding:16px 14px 6px 20px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--c);flex:none}
+.title-in{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px dashed transparent;font-family:var(--display);font-weight:700;font-size:22px;padding:4px 0}
+.title-in:hover,.title-in:focus{border-bottom-color:var(--line)}
+h2.title-in{margin:0}
+.x{width:36px;height:36px;border-radius:50%;border:0;background:#1d1c18;font-size:16px;flex:none}
+.x:hover{background:#27251f}
+.sum{padding:2px 20px 12px}
+.total{font-family:var(--display);font-weight:700;font-size:34px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--c)}
+.sub{color:var(--mute);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+.list{flex:1;overflow:auto;padding:4px 14px 8px 20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.row{display:grid;grid-template-columns:1fr 92px 64px 30px;gap:6px;align-items:center}
+.f{width:100%;min-width:0;height:38px;background:#1a1915;border:1px solid var(--line);border-radius:12px;padding:0 10px;font-size:14px}
+.f:focus{border-color:var(--c,var(--gold));outline:0}
+.f.num{text-align:right;font-variant-numeric:tabular-nums}
+select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
+.del{width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:var(--mute);font-size:16px}
+.del:hover{color:var(--bad)}
+.rate{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute);padding:0 4px 4px 4px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.rate .f{width:88px;height:30px;border-radius:10px;text-align:right}
+.rate .conv{margin-left:auto;color:var(--ink);font-weight:600}
+.empty{color:var(--mute);font-size:14px;padding:6px 0}
+.cfoot{display:flex;gap:8px;padding:12px 14px 16px 20px;border-top:1px solid var(--line);align-items:center}
+.btn{height:40px;border-radius:20px;padding:0 16px;border:1px solid var(--line);background:#1a1915;font-size:14px;font-weight:600}
+.btn:hover{border-color:var(--mute)}
+.btn.main{background:var(--c,var(--gold));border-color:transparent;color:#14110a}
+.btn.danger{margin-left:auto;color:var(--bad)}
+.btn.danger.armed{background:var(--bad);color:#1a0a07;border-color:transparent}
+.sec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+.note{font-size:12px;color:var(--mute);line-height:1.45}
+.srow{display:grid;grid-template-columns:84px 14px 1fr 30px;gap:6px;align-items:center}
+.srow span{color:var(--mute);text-align:center}
+
+@media (max-width:420px){.stat b{font-size:13px}.pill{padding-left:14px}}
+@media (prefers-reduced-motion:reduce){
+  .node .in,.flow{animation:none}
+  #card,.cbody,#scrim,.node{transition-duration:.01s;transition-delay:0s}
+}
+</style>
+</head>
+<body>
+<div id="stage"><div id="world"><svg id="lines"></svg></div></div>
+<div id="hint">Tap + to add your first expense circle.</div>
+
+<div class="bar" id="top">
+  <div class="brand">money<i>map</i></div>
+  <div class="tools">
+    <button class="round" id="fit" aria-label="Fit map to screen" title="Fit to screen">⤢</button>
+    <button class="round" id="gear" aria-label="Settings" title="Currency and data">⚙</button>
+  </div>
+</div>
+<div class="bar" id="bottom">
+  <div class="pill">
+    <div class="stats">
+      <div class="stat"><small>In</small><b id="s-in"></b></div>
+      <div class="stat"><small>Out</small><b id="s-out"></b></div>
+      <div class="stat"><small>Left</small><b id="s-left"></b></div>
+    </div>
+    <button class="add" id="add" aria-label="Add expense circle" title="Add expense circle">+</button>
+  </div>
+</div>
+
+<script>
+/* ---------- data ---------- */
+const KEY='moneymap.v1';
+const GOLD='#e3b93c';
+const PALETTE=['#5fd1c4','#ff8a6b','#a58bff','#6bb7ff','#b5e36a','#ff7fb0','#f2a14b','#8ee0a6'];
+const uid=()=>Math.random().toString(36).slice(2,9);
+const item=(name,amount,cur,rate)=>({id:uid(),name,amount,cur,rate:rate??null});
+
+function sample(){
+  return {
+    base:'ZAR',
+    rates:{USD:18.2,EUR:21.0,GBP:24.0},
+    income:[item('Salary',42000,'ZAR'),item('Side project',3500,'ZAR')],
+    nodes:[
+      {id:uid(),title:'Subscriptions',color:PALETTE[0],items:[item('Claude Code',100,'USD'),item('Netflix',199,'ZAR'),item('Spotify',69,'ZAR')]},
+      {id:uid(),title:'Tech',color:PALETTE[1],items:[item('Hosting',12,'USD'),item('Domain',14,'USD'),item('Cloud storage',60,'ZAR')]},
+      {id:uid(),title:'Health insurance',color:PALETTE[2],items:[item('Medical aid',3200,'ZAR')]},
+      {id:uid(),title:'Life insurance',color:PALETTE[3],items:[item('Life cover',650,'ZAR')]},
+      {id:uid(),title:'Data',color:PALETTE[4],items:[item('Fibre',899,'ZAR'),item('Mobile data',349,'ZAR')]},
+      {id:uid(),title:'Living',color:PALETTE[5],items:[item('Rent',9500,'ZAR'),item('Groceries',4500,'ZAR')]}
+    ]
+  };
+}
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null}
+if(!S||!S.nodes)S=sample();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- money ---------- */
+const SYM={ZAR:'R',USD:'$',EUR:'€',GBP:'£'};
+const sym=c=>SYM[c]||(c+' ');
+const num=v=>{const n=parseFloat(String(v).replace(/[^0-9.\-]/g,''));return isFinite(n)?n:0};
+function fmt(n){const r=Math.round(n*100)/100;return r.toLocaleString('en-US',{minimumFractionDigits:r%1?2:0,maximumFractionDigits:2})}
+const money=n=>(n<0?'−':'')+sym(S.base)+fmt(Math.abs(n));
+function compact(n){
+  const a=Math.abs(n),s=(n<0?'−':'')+sym(S.base);
+  if(a>=1e6)return s+(a/1e6).toFixed(1).replace(/\.0$/,'')+'M';
+  if(a>=1e4)return s+(a/1e3).toFixed(1).replace(/\.0$/,'')+'k';
+  return s+Math.round(a).toLocaleString('en-US');
+}
+const rateFor=it=>it.cur===S.base?1:(it.rate>0?it.rate:(S.rates[it.cur]||1));
+const inBase=it=>num(it.amount)*rateFor(it);
+const sum=items=>items.reduce((a,i)=>a+inBase(i),0);
+const incomeTotal=()=>sum(S.income);
+const spentTotal=()=>S.nodes.reduce((a,n)=>a+sum(n.items),0);
+
+/* ---------- dom helpers ---------- */
+const h=(tag,props={},...kids)=>{
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(props)){
+    if(k==='class')e.className=v;
+    else if(k==='style')e.style.cssText=v;
+    else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);
+    else if(v!==undefined&&v!==null)e[k]=v;
+  }
+  kids.flat().forEach(c=>e.append(c));
+  return e;
+};
+const $=id=>document.getElementById(id);
+const stage=$('stage'),world=$('world'),lines=$('lines');
+
+/* ---------- map ---------- */
+let tx=0,ty=0,sc=1,lastCount=-1,worldW=0,worldH=0;
+const els=new Map();
+function applyView(){world.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`}
+function fit(){
+  const W=stage.clientWidth,H=stage.clientHeight;
+  sc=Math.max(.5,Math.min(1,W/worldW,H/worldH));
+  tx=(W-worldW*sc)/2;ty=(H-worldH*sc)/2;applyView();
+}
+function hashDelay(id){let x=0;for(const c of id)x=(x*31+c.charCodeAt(0))>>>0;return -((x%70)/10)+'s'}
+
+function renderMap(){
+  const W=stage.clientWidth,H=stage.clientHeight,narrow=W<520;
+  const padTop=70,padBot=96;
+  const totals=S.nodes.map(n=>sum(n.items));
+  const maxV=Math.max(1,...totals);
+  const rMin=narrow?34:40,rSpan=narrow?24:32,hubR=narrow?60:72;
+  const radii=totals.map(v=>rMin+rSpan*Math.sqrt(Math.max(v,0)/maxV));
+  const maxR=Math.max(rMin,...radii);
+  const availH=H-padTop-padBot;
+  const rx0=Math.max(hubR+maxR+26,W/2-maxR-8);
+  const ry0=Math.max(hubR+maxR+26,availH/2-maxR-8);
+  const gap=2*maxR+24;
+  // split nodes into rings
+  const rings=[];let i=0,cap=7;
+  while(i<S.nodes.length){rings.push(S.nodes.slice(i,i+cap).map((n,j)=>i+j));i+=cap;cap+=5}
+  const last=Math.max(0,rings.length-1);
+  const rxL=rx0+last*gap,ryL=ry0+last*gap;
+  worldW=Math.max(W,2*(rxL+maxR+8));
+  const innerH=Math.max(availH,2*(ryL+maxR+8));
+  worldH=innerH+padTop+padBot;
+  const cx=worldW/2,cy=padTop+innerH/2;
+  world.style.width=worldW+'px';world.style.height=worldH+'px';
+  lines.setAttribute('width',worldW);lines.setAttribute('height',worldH);
+
+  const pos={};
+  rings.forEach((idxs,k)=>{
+    const step=360/idxs.length,off=k%2?step/2:0;
+    idxs.forEach((ni,j)=>{
+      const a=(-90+off+step*j)*Math.PI/180;
+      pos[ni]=[cx+Math.cos(a)*(rx0+k*gap),cy+Math.sin(a)*(ry0+k*gap)];
+    });
+  });
+
+  // lines
+  const inc=incomeTotal(),spent=spentTotal();
+  let svg='';
+  S.nodes.forEach((n,ni)=>{
+    const [x,y]=pos[ni],dx=x-cx,dy=y-cy,len=Math.hypot(dx,dy)||1;
+    const sign=ni%2?1:-1,bend=len*.14*sign;
+    const qx=(cx+x)/2+(-dy/len)*bend,qy=(cy+y)/2+(dx/len)*bend;
+    const d=`M${cx} ${cy} Q${qx} ${qy} ${x} ${y}`;
+    const w=1.5+5*Math.sqrt(Math.max(totals[ni],0)/maxV);
+    svg+=`<path d="${d}" fill="none" stroke="${n.color}" stroke-opacity=".28" stroke-width="${w.toFixed(1)}" stroke-linecap="round"/>`;
+    svg+=`<path class="flow" d="${d}" fill="none" stroke="${n.color}" stroke-width="${(w+1.5).toFixed(1)}"/>`;
+  });
+  lines.innerHTML=svg;
+
+  // nodes
+  const seen=new Set();
+  const place=(key,x,y,r,color,title,amt,extra,onTap,cls)=>{
+    seen.add(key);
+    let el=els.get(key);
+    if(!el){
+      el=h('div',{class:'node '+(cls||''),onclick:onTap},h('div',{class:'in'},h('div',{class:'n-title'}),h('div',{class:'n-amt'}),h('div',{class:'n-left'})));
+      world.append(el);els.set(key,el);
+    }
+    el.style.cssText=`left:${x-r}px;top:${y-r}px;width:${2*r}px;height:${2*r}px;`;
+    const inn=el.firstChild;
+    inn.style.setProperty('--c',color);inn.style.setProperty('--d',hashDelay(key));
+    inn.children[0].textContent=title;inn.children[1].textContent=amt;
+    inn.children[2].textContent=extra?extra.text:'';
+    inn.children[2].style.color=extra?extra.color:'';
+    inn.children[1].style.color=cls==='hub'?'':color;
+  };
+  const left=inc-spent;
+  place('hub',cx,cy,hubR,GOLD,'Income',compact(inc),{text:(left<0?'over by ':'left ')+compact(Math.abs(left)),color:left<0?'var(--bad)':'var(--good)'},()=>openCard({kind:'income'}),'hub');
+  S.nodes.forEach((n,ni)=>place(n.id,pos[ni][0],pos[ni][1],radii[ni],n.color,n.title||'Untitled',compact(totals[ni]),null,()=>openCard({kind:'node',id:n.id})));
+  for(const [k,el] of els)if(!seen.has(k)){el.remove();els.delete(k)}
+
+  $('hint').style.display=S.nodes.length?'none':'block';
+  $('s-in').textContent=compact(inc);
+  $('s-out').textContent=compact(spent);
+  const sl=$('s-left');sl.textContent=compact(left);sl.style.color=left<0?'var(--bad)':'var(--good)';
+
+  if(lastCount!==S.nodes.length){lastCount=S.nodes.length;fit()}
+}
+function commit(){save();renderMap()}
+
+/* ---------- pan / zoom ---------- */
+const ptrs=new Map();let drag=null,moved=false,pinch=null;
+const clampS=s=>Math.max(.3,Math.min(2.5,s));
+stage.addEventListener('pointerdown',e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===1){drag={x:e.clientX,y:e.clientY,tx,ty};moved=false}
+  else if(ptrs.size===2){
+    const [a,b]=[...ptrs.values()],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,s:sc,wx:(mx-tx)/sc,wy:(my-ty)/sc};moved=true;drag=null;
+  }
+});
+window.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2&&pinch){
+    const [a,b]=[...ptrs.values()],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    sc=clampS(pinch.s*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d);
+    tx=mx-pinch.wx*sc;ty=my-pinch.wy*sc;applyView();
+  }else if(drag&&ptrs.size===1){
+    const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+    if(!moved&&Math.hypot(dx,dy)>6)moved=true;
+    if(moved){tx=drag.tx+dx;ty=drag.ty+dy;applyView()}
+  }
+});
+const endPtr=e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2)pinch=null;
+  if(ptrs.size===1){const p=[...ptrs.values()][0];drag={x:p.x,y:p.y,tx,ty}}
+  if(ptrs.size===0){drag=null;setTimeout(()=>{moved=false},0)}
+};
+window.addEventListener('pointerup',endPtr);
+window.addEventListener('pointercancel',endPtr);
+stage.addEventListener('click',e=>{if(moved){e.stopPropagation();e.preventDefault()}},true);
+stage.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const ns=clampS(sc*Math.exp(-e.deltaY*.0015)),wx=(e.clientX-tx)/sc,wy=(e.clientY-ty)/sc;
+  sc=ns;tx=e.clientX-wx*sc;ty=e.clientY-wy*sc;applyView();
+},{passive:false});
+
+/* ---------- card (morph from circle to rounded rectangle) ---------- */
+let open=null;
+function originRect(ref){
+  let el=null;
+  if(ref.kind==='settings')el=$('gear');
+  else if(ref.kind==='income')el=els.get('hub');
+  else el=els.get(ref.id);
+  return el?el.getBoundingClientRect():null;
+}
+function setGeo(card,r,radius){
+  card.style.left=r.left+'px';card.style.top=r.top+'px';
+  card.style.width=r.width+'px';card.style.height=r.height+'px';card.style.borderRadius=radius;
+}
+function openCard(ref){
+  if(open)closeCard(true);
+  const r=originRect(ref)||{left:innerWidth/2-30,top:innerHeight/2-30,width:60,height:60};
+  const color=ref.kind==='income'||ref.kind==='settings'?GOLD:(S.nodes.find(n=>n.id===ref.id)||{}).color;
+  const body=ref.kind==='settings'?buildSettings():buildCard(ref);
+  const card=h('div',{id:'card',role:'dialog','aria-modal':'true'},body);
+  card.style.setProperty('--c',color);
+  const scrim=h('div',{id:'scrim',onclick:()=>closeCard()});
+  document.body.append(scrim,card);
+  setGeo(card,r,'50%');
+  open={card,scrim,ref,body};
+  const w=Math.min(innerWidth-24,440),hh=Math.min(innerHeight-40,ref.kind==='settings'?580:620);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    if(!open||open.card!==card)return;
+    setGeo(card,{left:(innerWidth-w)/2,top:(innerHeight-hh)/2,width:w,height:hh},'28px');
+    scrim.style.opacity=1;body.classList.add('show');
+  }));
+  return body;
+}
+function closeCard(instant){
+  if(!open)return;
+  const {card,scrim,ref,body}=open;open=null;
+  if(instant){card.remove();scrim.remove();return}
+  body.classList.remove('show');scrim.style.opacity=0;
+  const r=originRect(ref);
+  if(r)setGeo(card,r,'50%');else{card.style.opacity=0;card.style.transform='scale(.9)'}
+  setTimeout(()=>{card.remove();scrim.remove()},440);
+}
+window.addEventListener('keydown',e=>{if(e.key==='Escape')closeCard()});
+
+function buildCard(ref){
+  const isInc=ref.kind==='income';
+  const node=isInc?null:S.nodes.find(n=>n.id===ref.id);
+  const items=isInc?S.income:node.items;
+  const total=h('div',{class:'total'});
+  const sub=h('div',{class:'sub'});
+  const list=h('div',{class:'list'});
+  const update=()=>{
+    const t=sum(items),inc=incomeTotal();
+    total.textContent=money(t);
+    sub.replaceChildren(...(isInc
+      ?[h('span',{textContent:money(spentTotal())+' spent'}),h('span',{textContent:money(inc-spentTotal())+' left'}),h('span',{textContent:'per month'})]
+      :[h('span',{textContent:(inc>0?fmt(t/inc*100)+'% of income':'no income yet')}),h('span',{textContent:money(t*12)+' / year'}),h('span',{textContent:items.length+(items.length===1?' item':' items')})]));
+  };
+  const changed=()=>{update();commit()};
+  const renderRows=()=>{
+    list.replaceChildren();
+    if(!items.length)list.append(h('div',{class:'empty',textContent:isInc?'Add a salary or any other money coming in.':'Nothing here yet. Add the first item below.'}));
+    items.forEach(it=>list.append(rowEl(items,it,changed,renderRows)));
+  };
+  const title=isInc
+    ?h('h2',{class:'title-in',textContent:'Income'})
+    :h('input',{class:'title-in',id:'node-title',value:node.title,placeholder:'Title',maxLength:40,'aria-label':'Title',oninput:e=>{node.title=e.target.value;commit()}});
+  const addBtn=h('button',{class:'btn main',id:'add-item',textContent:'+ Add item',onclick:()=>{
+    const it=item('',0,S.base);items.push(it);renderRows();changed();
+    const rows=list.querySelectorAll('.row');const last=rows[rows.length-1];
+    if(last){last.scrollIntoView({block:'nearest'});last.querySelector('input').focus()}
+  }});
+  const foot=h('div',{class:'cfoot'},addBtn);
+  if(!isInc){
+    let armed=false,timer;
+    const del=h('button',{class:'btn danger',id:'del-node',textContent:'Delete circle',onclick:()=>{
+      if(!armed){armed=true;del.textContent='Tap again to delete';del.classList.add('armed');timer=setTimeout(()=>{armed=false;del.textContent='Delete circle';del.classList.remove('armed')},2600);return}
+      clearTimeout(timer);
+      const ref2={kind:'node',id:node.id};
+      closeCard();
+      S.nodes=S.nodes.filter(n=>n.id!==node.id);commit();void ref2;
+    }});
+    foot.append(del);
+  }
+  const body=h('div',{class:'cbody'},
+    h('div',{class:'chead'},h('span',{class:'dot'}),title,h('button',{class:'x',id:'close',textContent:'✕','aria-label':'Close',onclick:()=>closeCard()})),
+    h('div',{class:'sum'},total,sub),list,foot);
+  update();renderRows();
+  return body;
+}
+
+function rowEl(items,it,changed,rerender){
+  const wrap=h('div',{class:'row'});
+  const conv=h('span',{class:'conv'});
+  const rateBox=h('div',{class:'rate'});
+  const upd=()=>{conv.textContent='= '+money(inBase(it))};
+  const opts=[...new Set([S.base,...Object.keys(S.rates),it.cur])];
+  wrap.append(
+    h('input',{class:'f',id:'n-'+it.id,value:it.name,placeholder:'Name','aria-label':'Item name',oninput:e=>{it.name=e.target.value;save()}}),
+    h('input',{class:'f num',id:'a-'+it.id,value:it.amount||'',placeholder:'0',inputMode:'decimal','aria-label':'Amount',oninput:e=>{it.amount=num(e.target.value);upd();changed()}}),
+    h('select',{class:'f',id:'c-'+it.id,'aria-label':'Currency',onchange:e=>{it.cur=e.target.value;if(it.cur===S.base)it.rate=null;changed();rerender()}},
+      opts.map(c=>h('option',{value:c,textContent:c,selected:c===it.cur}))),
+    h('button',{class:'del',textContent:'✕','aria-label':'Remove item',onclick:()=>{const i=items.indexOf(it);if(i>-1)items.splice(i,1);changed();rerender()}})
+  );
+  if(it.cur!==S.base){
+    rateBox.append(
+      h('span',{textContent:`1 ${it.cur} =`}),
+      h('input',{class:'f',id:'r-'+it.id,value:it.rate||'',placeholder:String(S.rates[it.cur]||1),inputMode:'decimal','aria-label':'Conversion rate',oninput:e=>{const v=num(e.target.value);it.rate=v>0?v:null;upd();changed()}}),
+      h('span',{textContent:S.base}),conv);
+    wrap.append(rateBox);
+  }
+  upd();
+  return wrap;
+}
+
+/* ---------- settings ---------- */
+function buildSettings(){
+  const list=h('div',{class:'list'});
+  const render=()=>{
+    list.replaceChildren();
+    list.append(
+      h('div',{class:'sec',textContent:'Main currency'}),
+      h('input',{class:'f',id:'base',value:S.base,maxLength:5,'aria-label':'Main currency code',style:'width:96px;text-transform:uppercase',onchange:e=>{
+        const nb=(e.target.value||'').trim().toUpperCase()||S.base,old=S.base;
+        if(nb===old)return;
+        const all=[S.income,...S.nodes.map(n=>n.items)].flat();
+        all.forEach(i=>{if(i.cur===old)i.cur=nb});
+        delete S.rates[nb];S.base=nb;
+        // items that were foreign keep their code; the old main currency is now foreign
+        commit();render();
+      }}),
+      h('div',{class:'sec',textContent:'Exchange rates'}),
+      h('div',{class:'note',textContent:`Type what 1 unit of each currency is worth in ${S.base}. These are starting guesses you update by hand. A single item can override its own rate inside its card.`})
+    );
+    Object.keys(S.rates).forEach(code=>{
+      list.append(h('div',{class:'srow'},
+        h('input',{class:'f',value:code,maxLength:5,'aria-label':'Currency code',style:'text-transform:uppercase',onchange:e=>{
+          const nc=(e.target.value||'').trim().toUpperCase();
+          if(!nc||nc===code||nc===S.base){render();return}
+          S.rates[nc]=S.rates[code];delete S.rates[code];
+          [S.income,...S.nodes.map(n=>n.items)].flat().forEach(i=>{if(i.cur===code)i.cur=nc});
+          commit();render();
+        }}),
+        h('span',{textContent:'='}),
+        h('input',{class:'f num',value:S.rates[code],inputMode:'decimal','aria-label':'Rate in '+S.base,oninput:e=>{S.rates[code]=num(e.target.value)||1;commit()}}),
+        h('button',{class:'del',textContent:'✕','aria-label':'Remove currency',onclick:()=>{
+          delete S.rates[code];
+          [S.income,...S.nodes.map(n=>n.items)].flat().forEach(i=>{if(i.cur===code)i.cur=S.base});
+          commit();render();
+        }})));
+    });
+    list.append(h('div',null,h('button',{class:'btn',id:'add-cur',textContent:'+ Add currency',onclick:()=>{
+      let c='NEW',n=1;while(S.rates[c]||c===S.base)c='NEW'+(++n);
+      S.rates[c]=1;save();render();
+    }})));
+    let armed=false,t;
+    const fresh=h('button',{class:'btn danger',style:'margin-left:0',id:'fresh',textContent:'Start fresh',onclick:()=>{
+      if(!armed){armed=true;fresh.textContent='Tap again to wipe';fresh.classList.add('armed');t=setTimeout(()=>{armed=false;fresh.textContent='Start fresh';fresh.classList.remove('armed')},2600);return}
+      clearTimeout(t);S={base:S.base,rates:S.rates,income:[],nodes:[]};lastCount=-1;commit();render();
+    }});
+    list.append(
+      h('div',{class:'sec',textContent:'Data'}),
+      h('div',{class:'note',textContent:'Everything is saved in this browser only. The example data is made up.'}),
+      h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
+        h('button',{class:'btn',id:'sample',textContent:'Load example data',onclick:()=>{S=sample();lastCount=-1;commit();render()}}),fresh)
+    );
+  };
+  render();
+  return h('div',{class:'cbody'},
+    h('div',{class:'chead'},h('span',{class:'dot'}),h('h2',{class:'title-in',textContent:'Settings'}),h('button',{class:'x',id:'close',textContent:'✕','aria-label':'Close',onclick:()=>closeCard()})),
+    h('div',{style:'height:10px'}),list);
+}
+
+/* ---------- wiring ---------- */
+$('fit').onclick=fit;
+$('gear').onclick=()=>openCard({kind:'settings'});
+$('add').onclick=()=>{
+  const used=new Set(S.nodes.map(n=>n.color));
+  const color=PALETTE.find(c=>!used.has(c))||PALETTE[S.nodes.length%PALETTE.length];
+  const n={id:uid(),title:'New expense',color,items:[]};
+  S.nodes.push(n);commit();
+  requestAnimationFrame(()=>{
+    const body=openCard({kind:'node',id:n.id});
+    setTimeout(()=>{const t=body.querySelector('#node-title');if(t){t.focus();t.select()}},480);
+  });
+};
+let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderMap();fit()},120)});
+renderMap();
+</script>
+</body>
+</html>
