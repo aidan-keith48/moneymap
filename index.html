@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Moneymap</title>
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -28,7 +29,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 input,select{font:inherit;color:var(--ink)}
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
-#stage{position:fixed;inset:0;touch-action:none;cursor:grab;
+#stage{position:fixed;inset:0;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
   background:radial-gradient(circle,#1d1c18 1px,transparent 1.2px) 0 0/26px 26px,var(--bg)}
 #stage:active{cursor:grabbing}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
@@ -44,6 +45,8 @@ input,select{font:inherit;color:var(--ink)}
   box-shadow:0 0 0 0 var(--c);animation:float 7s ease-in-out infinite;animation-delay:var(--d)}
 .node:hover .in{box-shadow:0 0 30px -8px var(--c)}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.node.dragging{transform:scale(1.08);cursor:grabbing;z-index:3}
+.node.dragging .in{animation-play-state:paused;box-shadow:0 18px 36px -8px #000,0 0 34px -6px var(--c)}
 .n-title{font-size:12px;font-weight:600;line-height:1.15;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .n-amt{font-family:var(--display);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--c)}
 .hub .in{background:radial-gradient(circle at 50% 35%,#2a2208,#0e0d0b 70%);border-width:3px}
@@ -187,7 +190,7 @@ const spentTotal=()=>S.nodes.reduce((a,n)=>a+sum(n.items),0);
 /* ---------- dom helpers ---------- */
 const h=(tag,props={},...kids)=>{
   const e=document.createElement(tag);
-  for(const [k,v] of Object.entries(props)){
+  for(const [k,v] of Object.entries(props||{})){
     if(k==='class')e.className=v;
     else if(k==='style')e.style.cssText=v;
     else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);
@@ -202,13 +205,40 @@ const stage=$('stage'),world=$('world'),lines=$('lines');
 /* ---------- map ---------- */
 let tx=0,ty=0,sc=1,lastCount=-1,worldW=0,worldH=0;
 const els=new Map();
+let pts={}; // key -> {ax,ay auto-layout spot; x,y current centre; r}
+const offOf=k=>(S.offsets&&S.offsets[k])||[0,0];
 function applyView(){world.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`}
 function fit(){
   const W=stage.clientWidth,H=stage.clientHeight;
-  sc=Math.max(.5,Math.min(1,W/worldW,H/worldH));
-  tx=(W-worldW*sc)/2;ty=(H-worldH*sc)/2;applyView();
+  // the world rectangle, grown to include any circle dragged outside it
+  let x0=0,y0=0,x1=worldW,y1=worldH;
+  for(const p of Object.values(pts)){
+    x0=Math.min(x0,p.x-p.r-8);x1=Math.max(x1,p.x+p.r+8);
+    y0=Math.min(y0,p.y-p.r-70);y1=Math.max(y1,p.y+p.r+96);
+  }
+  const bw=x1-x0,bh=y1-y0,grown=bw>worldW+1||bh>worldH+1;
+  sc=Math.max(grown?.3:.5,Math.min(1,W/bw,H/bh));
+  tx=(W-bw*sc)/2-x0*sc;ty=(H-bh*sc)/2-y0*sc;applyView();
 }
 function hashDelay(id){let x=0;for(const c of id)x=(x*31+c.charCodeAt(0))>>>0;return -((x%70)/10)+'s'}
+function curve(hub,p,ni){
+  const dx=p.x-hub.x,dy=p.y-hub.y,len=Math.hypot(dx,dy)||1;
+  const sign=ni%2?1:-1,bend=len*.14*sign;
+  const qx=(hub.x+p.x)/2+(-dy/len)*bend,qy=(hub.y+p.y)/2+(dx/len)*bend;
+  return `M${hub.x} ${hub.y} Q${qx} ${qy} ${p.x} ${p.y}`;
+}
+function moveNode(key,dx,dy,el){
+  const p=pts[key];if(!p)return;
+  (S.offsets||(S.offsets={}))[key]=[Math.round(dx*10)/10,Math.round(dy*10)/10];
+  p.x=p.ax+dx;p.y=p.ay+dy;
+  el.style.left=(p.x-p.r)+'px';el.style.top=(p.y-p.r)+'px';
+  // update the existing paths so the flow animation keeps running
+  S.nodes.forEach((n,ni)=>{
+    if(key!=='hub'&&n.id!==key)return;
+    const d=curve(pts.hub,pts[n.id],ni);
+    lines.children[2*ni].setAttribute('d',d);lines.children[2*ni+1].setAttribute('d',d);
+  });
+}
 
 function renderMap(){
   const W=stage.clientWidth,H=stage.clientHeight,narrow=W<520;
@@ -243,14 +273,17 @@ function renderMap(){
     });
   });
 
+  // current positions: auto-layout spot plus any saved drag offset
+  pts={};
+  const pt=(key,ax,ay,r)=>{const [dx,dy]=offOf(key);return pts[key]={ax,ay,x:ax+dx,y:ay+dy,r}};
+  pt('hub',cx,cy,hubR);
+  S.nodes.forEach((n,ni)=>pt(n.id,pos[ni][0],pos[ni][1],radii[ni]));
+
   // lines
   const inc=incomeTotal(),spent=spentTotal();
   let svg='';
   S.nodes.forEach((n,ni)=>{
-    const [x,y]=pos[ni],dx=x-cx,dy=y-cy,len=Math.hypot(dx,dy)||1;
-    const sign=ni%2?1:-1,bend=len*.14*sign;
-    const qx=(cx+x)/2+(-dy/len)*bend,qy=(cy+y)/2+(dx/len)*bend;
-    const d=`M${cx} ${cy} Q${qx} ${qy} ${x} ${y}`;
+    const d=curve(pts.hub,pts[n.id],ni);
     const w=1.5+5*Math.sqrt(Math.max(totals[ni],0)/maxV);
     svg+=`<path d="${d}" fill="none" stroke="${n.color}" stroke-opacity=".28" stroke-width="${w.toFixed(1)}" stroke-linecap="round"/>`;
     svg+=`<path class="flow" d="${d}" fill="none" stroke="${n.color}" stroke-width="${(w+1.5).toFixed(1)}"/>`;
@@ -264,6 +297,7 @@ function renderMap(){
     let el=els.get(key);
     if(!el){
       el=h('div',{class:'node '+(cls||''),onclick:onTap},h('div',{class:'in'},h('div',{class:'n-title'}),h('div',{class:'n-amt'}),h('div',{class:'n-left'})));
+      el.dataset.key=key;
       world.append(el);els.set(key,el);
     }
     el.style.cssText=`left:${x-r}px;top:${y-r}px;width:${2*r}px;height:${2*r}px;`;
@@ -275,8 +309,8 @@ function renderMap(){
     inn.children[1].style.color=cls==='hub'?'':color;
   };
   const left=inc-spent;
-  place('hub',cx,cy,hubR,GOLD,'Income',compact(inc),{text:(left<0?'over by ':'left ')+compact(Math.abs(left)),color:left<0?'var(--bad)':'var(--good)'},()=>openCard({kind:'income'}),'hub');
-  S.nodes.forEach((n,ni)=>place(n.id,pos[ni][0],pos[ni][1],radii[ni],n.color,n.title||'Untitled',compact(totals[ni]),null,()=>openCard({kind:'node',id:n.id})));
+  place('hub',pts.hub.x,pts.hub.y,hubR,GOLD,'Income',compact(inc),{text:(left<0?'over by ':'left ')+compact(Math.abs(left)),color:left<0?'var(--bad)':'var(--good)'},()=>openCard({kind:'income'}),'hub');
+  S.nodes.forEach((n,ni)=>place(n.id,pts[n.id].x,pts[n.id].y,radii[ni],n.color,n.title||'Untitled',compact(totals[ni]),null,()=>openCard({kind:'node',id:n.id})));
   for(const [k,el] of els)if(!seen.has(k)){el.remove();els.delete(k)}
 
   $('hint').style.display=S.nodes.length?'none':'block';
@@ -289,12 +323,24 @@ function renderMap(){
 function commit(){save();renderMap()}
 
 /* ---------- pan / zoom ---------- */
-const ptrs=new Map();let drag=null,moved=false,pinch=null;
+const ptrs=new Map();let drag=null,moved=false,pinch=null,grab=null;
 const clampS=s=>Math.max(.3,Math.min(2.5,s));
+function endGrab(){
+  if(!grab)return;
+  grab.el.classList.remove('dragging');
+  if(moved)save();
+  grab=null;
+}
 stage.addEventListener('pointerdown',e=>{
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size===1){drag={x:e.clientX,y:e.clientY,tx,ty};moved=false}
+  if(ptrs.size===1){
+    moved=false;
+    const el=e.target.closest('.node');
+    if(el){const [ox,oy]=offOf(el.dataset.key);grab={key:el.dataset.key,el,x:e.clientX,y:e.clientY,ox,oy};drag=null}
+    else drag={x:e.clientX,y:e.clientY,tx,ty};
+  }
   else if(ptrs.size===2){
+    endGrab(); // a second finger means pinch, even if the first was on a circle
     const [a,b]=[...ptrs.values()],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
     pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,s:sc,wx:(mx-tx)/sc,wy:(my-ty)/sc};moved=true;drag=null;
   }
@@ -306,6 +352,10 @@ window.addEventListener('pointermove',e=>{
     const [a,b]=[...ptrs.values()],mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
     sc=clampS(pinch.s*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d);
     tx=mx-pinch.wx*sc;ty=my-pinch.wy*sc;applyView();
+  }else if(grab&&ptrs.size===1){
+    const dx=e.clientX-grab.x,dy=e.clientY-grab.y;
+    if(!moved&&Math.hypot(dx,dy)>6){moved=true;grab.el.classList.add('dragging')}
+    if(moved)moveNode(grab.key,grab.ox+dx/sc,grab.oy+dy/sc,grab.el);
   }else if(drag&&ptrs.size===1){
     const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
     if(!moved&&Math.hypot(dx,dy)>6)moved=true;
@@ -317,7 +367,7 @@ const endPtr=e=>{
   ptrs.delete(e.pointerId);
   if(ptrs.size<2)pinch=null;
   if(ptrs.size===1){const p=[...ptrs.values()][0];drag={x:p.x,y:p.y,tx,ty}}
-  if(ptrs.size===0){drag=null;setTimeout(()=>{moved=false},0)}
+  if(ptrs.size===0){endGrab();drag=null;setTimeout(()=>{moved=false},0)}
 };
 window.addEventListener('pointerup',endPtr);
 window.addEventListener('pointercancel',endPtr);
@@ -407,7 +457,7 @@ function buildCard(ref){
       clearTimeout(timer);
       const ref2={kind:'node',id:node.id};
       closeCard();
-      S.nodes=S.nodes.filter(n=>n.id!==node.id);commit();void ref2;
+      S.nodes=S.nodes.filter(n=>n.id!==node.id);if(S.offsets)delete S.offsets[node.id];commit();void ref2;
     }});
     foot.append(del);
   }
@@ -488,6 +538,9 @@ function buildSettings(){
       clearTimeout(t);S={base:S.base,rates:S.rates,income:[],nodes:[]};lastCount=-1;commit();render();
     }});
     list.append(
+      h('div',{class:'sec',textContent:'Layout'}),
+      h('div',{class:'note',textContent:'Drag any circle to move it. This puts them all back in their original spots.'}),
+      h('div',null,h('button',{class:'btn',id:'reset-layout',textContent:'Reset layout',onclick:()=>{S.offsets={};commit();fit()}})),
       h('div',{class:'sec',textContent:'Data'}),
       h('div',{class:'note',textContent:'Everything is saved in this browser only. The example data is made up.'}),
       h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
