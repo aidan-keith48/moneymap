@@ -148,6 +148,29 @@ const GOLD='#e3b93c';
 const PALETTE=['#5fd1c4','#ff8a6b','#a58bff','#6bb7ff','#b5e36a','#ff7fb0','#f2a14b','#8ee0a6'];
 const uid=()=>Math.random().toString(36).slice(2,9);
 const item=(name,amount,cur,rate)=>({id:uid(),name,amount,cur,rate:rate??null});
+// net worth: an asset holding (simple value, or units × price) and a liability
+const hold=(name,o)=>({id:uid(),name,cur:'ZAR',rate:null,mode:'simple',value:0,qty:0,price:0,priced:null,cost:null,...o});
+const debt=(name,o)=>({id:uid(),name,cur:'ZAR',rate:null,balance:0,apr:null,payment:null,...o});
+// calm colours for assets, warm colours for liabilities
+const ASSET_PRESETS=[
+  {kind:'stocks',title:'Stocks and ETFs',color:'#6bb7ff',units:true},
+  {kind:'tfsa',title:'Tax-free savings',label:'Tax-free savings (TFSA)',color:'#5fd1c4'},
+  {kind:'ra',title:'Retirement annuity',color:'#8ea2ff'},
+  {kind:'pension',title:'Pension or provident fund',color:'#b49cff'},
+  {kind:'crypto',title:'Crypto',color:'#56c8e8',units:true},
+  {kind:'cash',title:'Cash and savings',color:'#8ee0a6'},
+  {kind:'property',title:'Property',color:'#b5e36a'},
+  {kind:'other',title:'Other assets',label:'Other',color:'#a9c2d6'}
+];
+const DEBT_PRESETS=[
+  {kind:'home',title:'Home loan',color:'#ff8a6b'},
+  {kind:'vehicle',title:'Vehicle finance',color:'#f2a14b'},
+  {kind:'card',title:'Credit card',color:'#ff6f7d'},
+  {kind:'student',title:'Student loan',color:'#ff7fb0'},
+  {kind:'other',title:'Other debts',label:'Other',color:'#e9967a'}
+];
+const VERSION=2;
+const TFSA_LIMITS={annual:46000,lifetime:500000};
 
 function sample(){
   return {
@@ -165,14 +188,55 @@ function sample(){
   };
 }
 let S;
-try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null}
-if(!S||!S.nodes)S=sample();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
-/* ---------- money ---------- */
+/* ---------- money maths: pure functions, no DOM and no global state ---------- */
+// fx is {base, rates}; dates are 'YYYY-MM-DD' strings so results never depend on the clock.
+const Money=(()=>{
+  const n=v=>{const x=parseFloat(String(v??'').replace(/[^0-9.\-]/g,''));return isFinite(x)?x:0};
+  const fxRate=(cur,override,fx)=>cur===fx.base?1:(override>0?override:(fx.rates[cur]||1));
+  const toBase=(amount,cur,override,fx)=>n(amount)*fxRate(cur,override,fx);
+  const holdingValue=h=>h.mode==='units'?n(h.qty)*n(h.price):n(h.value); // in the holding's own currency
+  const holdingBase=(h,fx)=>holdingValue(h)*fxRate(h.cur,h.rate,fx);
+  const debtBase=(d,fx)=>toBase(d.balance,d.cur,d.rate,fx);
+  const gain=(h,fx)=>{
+    const cost=n(h.cost);if(!(cost>0))return null;
+    const r=fxRate(h.cur,h.rate,fx),value=holdingValue(h)*r,c=cost*r;
+    return {cost:c,value,gain:value-c,pct:(value-c)/c*100};
+  };
+  const gainTotal=(hs,fx)=>{
+    let cost=0,g=0,any=false;
+    for(const h of hs){const x=gain(h,fx);if(x){any=true;cost+=x.cost;g+=x.gain}}
+    return any?{cost,gain:g,pct:g/cost*100}:null;
+  };
+  const circleTotal=(c,side,fx)=>c.items.reduce((a,i)=>a+(side==='a'?holdingBase(i,fx):debtBase(i,fx)),0);
+  const netWorth=(assets,debts,fx)=>{
+    const a=assets.reduce((s,c)=>s+circleTotal(c,'a',fx),0),l=debts.reduce((s,c)=>s+circleTotal(c,'d',fx),0);
+    return {assets:a,liabilities:l,net:a-l};
+  };
+  const dayNum=iso=>{const [y,m,d]=String(iso).split('-').map(Number);return Date.UTC(y,m-1,d)/864e5};
+  const ageDays=(iso,today)=>dayNum(today)-dayNum(iso);
+  const isStale=(iso,today,days=30)=>!iso||!(ageDays(iso,today)<=days);
+  // South African tax year: 1 March to the end of February
+  const taxYear=today=>{
+    const [y,m]=String(today).split('-').map(Number),s=m>=3?y:y-1,e=s+1;
+    const leap=e%4===0&&(e%100!==0||e%400===0);
+    return {start:s,from:`${s}-03-01`,to:`${e}-02-${leap?29:28}`,label:`${s}/${String(e).slice(2)}`};
+  };
+  const tfsa=(year,life,lim)=>{
+    year=Math.max(0,n(year));life=Math.max(0,n(life));
+    const A=n(lim.annual),L=n(lim.lifetime);
+    const yearLeft=Math.max(0,A-year),lifeLeft=Math.max(0,L-life);
+    return {yearPct:A>0?Math.min(100,year/A*100):0,lifePct:L>0?Math.min(100,life/L*100):0,
+      yearLeft,lifeLeft,room:Math.min(yearLeft,lifeLeft),overYear:year>A,overLife:life>L};
+  };
+  return {num:n,fxRate,toBase,holdingValue,holdingBase,debtBase,gain,gainTotal,circleTotal,netWorth,dayNum,ageDays,isStale,taxYear,tfsa};
+})(); // MONEY-END
+
+/* ---------- money formatting ---------- */
 const SYM={ZAR:'R',USD:'$',EUR:'€',GBP:'£'};
 const sym=c=>SYM[c]||(c+' ');
-const num=v=>{const n=parseFloat(String(v).replace(/[^0-9.\-]/g,''));return isFinite(n)?n:0};
+const num=Money.num;
 function fmt(n){const r=Math.round(n*100)/100;return r.toLocaleString('en-US',{minimumFractionDigits:r%1?2:0,maximumFractionDigits:2})}
 const money=n=>(n<0?'−':'')+sym(S.base)+fmt(Math.abs(n));
 function compact(n){
@@ -181,11 +245,71 @@ function compact(n){
   if(a>=1e4)return s+(a/1e3).toFixed(1).replace(/\.0$/,'')+'k';
   return s+Math.round(a).toLocaleString('en-US');
 }
-const rateFor=it=>it.cur===S.base?1:(it.rate>0?it.rate:(S.rates[it.cur]||1));
-const inBase=it=>num(it.amount)*rateFor(it);
+const inBase=it=>Money.toBase(it.amount,it.cur,it.rate,S);
 const sum=items=>items.reduce((a,i)=>a+inBase(i),0);
 const incomeTotal=()=>sum(S.income);
 const spentTotal=()=>S.nodes.reduce((a,n)=>a+sum(n.items),0);
+const allItems=()=>[S.income,...S.nodes.map(n=>n.items),...S.worth.assets.map(c=>c.items),...S.worth.debts.map(c=>c.items)].flat();
+
+/* ---------- dates ---------- */
+const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayISO=()=>isoOf(new Date());
+const addDays=(iso,k)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+k);return isoOf(d)};
+const fmtDate=iso=>new Date(iso+'T12:00:00').toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
+
+/* ---------- state version and migration ---------- */
+function emptyWorth(){return {assets:[],debts:[],offsets:{},snapshots:[],lastPrompt:null}}
+// Invented South African figures, flagged ex:true so "Clear examples" can remove them.
+function exampleWorth(){
+  const t=todayISO(),ago=k=>addDays(t,-k);
+  const A=(kind,items,extra)=>{const p=ASSET_PRESETS.find(x=>x.kind===kind);return {id:uid(),title:p.title,kind,color:p.color,ex:true,items,...extra}};
+  const D=(kind,items)=>{const p=DEBT_PRESETS.find(x=>x.kind===kind);return {id:uid(),title:p.title,kind,color:p.color,ex:true,items}};
+  const assets=[
+    A('stocks',[hold('Satrix Top 40 ETF',{mode:'units',qty:120,price:92.4,priced:ago(12),cost:9800}),
+      hold('Global tech ETF',{cur:'USD',mode:'units',qty:15,price:64.1,priced:ago(45),cost:820})]),
+    A('tfsa',[hold('Tax-free ETF',{value:128000,cost:105000})],{tfsa:{year:18000,life:105000,ty:Money.taxYear(t).start}}),
+    A('ra',[hold('Retirement annuity fund',{value:186500})]),
+    A('pension',[hold('Employer provident fund',{value:312000})]),
+    A('crypto',[hold('Bitcoin',{mode:'units',qty:0.045,price:1750000,priced:ago(3),cost:52000})]),
+    A('cash',[hold('Emergency fund',{value:45000}),hold('Everyday account',{value:8200})]),
+    A('property',[hold('Flat in Pinelands',{value:1450000,cost:1180000})])
+  ];
+  const debts=[
+    D('home',[debt('Bond',{balance:1120000,apr:11.25,payment:12850})]),
+    D('vehicle',[debt('Car finance',{balance:168000,apr:12.9,payment:4950})]),
+    D('card',[debt('Credit card',{balance:7400,apr:20.75,payment:1200})]),
+    D('student',[debt('Study loan',{balance:24000,apr:9.5,payment:850})])
+  ];
+  const snapshots=[];
+  for(let k=6;k>=1;k--){
+    const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-k);
+    const liabilities=1319400+k*9200,net=Math.round(917600*(1-k*.018)+(k%2?6500:-4200));
+    snapshots.push({id:uid(),date:isoOf(d),assets:net+liabilities,liabilities,net,circles:[],ex:true});
+  }
+  return {...emptyWorth(),assets,debts,snapshots};
+}
+function migrate(s){
+  if(!s||typeof s!=='object'||!Array.isArray(s.nodes))return null;
+  if(!(s.v>=2)){
+    // v1 to v2: budget fields (base, rates, income, nodes, offsets) are left exactly as they were
+    s.v=VERSION;s.mode='budget';s.privacy=false;s.tfsaLimits={...TFSA_LIMITS};s.worth=exampleWorth();
+  }
+  s.worth=Object.assign(emptyWorth(),s.worth);
+  s.tfsaLimits=Object.assign({...TFSA_LIMITS},s.tfsaLimits);
+  if(s.mode!=='worth')s.mode='budget';
+  s.privacy=s.privacy===true;
+  if(!Array.isArray(s.income))s.income=[];
+  if(!s.rates||typeof s.rates!=='object')s.rates={};
+  return s;
+}
+{
+  let raw=null,stored=null;
+  try{raw=localStorage.getItem(KEY);stored=JSON.parse(raw||'null')}catch(e){}
+  // keep an untouched copy of v1 data before the first migration, just in case
+  if(stored&&Array.isArray(stored.nodes)&&!(stored.v>=2)){try{localStorage.setItem(KEY+'.before-v2',raw)}catch(e){}}
+  S=migrate(stored)||migrate(sample());
+  save();
+}
 
 /* ---------- dom helpers ---------- */
 const h=(tag,props={},...kids)=>{
@@ -194,6 +318,7 @@ const h=(tag,props={},...kids)=>{
     if(k==='class')e.className=v;
     else if(k==='style')e.style.cssText=v;
     else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);
+    else if(k.startsWith('aria-')){if(v!==undefined&&v!==null)e.setAttribute(k,v)}
     else if(v!==undefined&&v!==null)e[k]=v;
   }
   kids.flat().forEach(c=>e.append(c));
@@ -500,27 +625,69 @@ function exportData(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 // Rebuild the state from known fields only: a backup file is untrusted input.
-function cleanImport(d){
-  const CODE=/^[A-Z0-9]{1,5}$/;
-  if(!d||typeof d!=='object'||!Array.isArray(d.income)||!Array.isArray(d.nodes)||!CODE.test(d.base))throw new Error('bad file');
+// v1 files (budget only) keep the current net worth data; privacy and mode stay as they are on this device.
+function cleanImport(d,now){
+  const CODE=/^[A-Z0-9]{1,5}$/,ID=/^[a-z0-9]{1,16}$/;
+  const obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+  if(!obj(d)||!Array.isArray(d.income)||!Array.isArray(d.nodes)||!CODE.test(d.base))throw new Error('bad file');
+  const used=new Set();
+  const cid=v=>{const x=typeof v==='string'&&ID.test(v)&&!used.has(v)?v:uid();used.add(x);return x};
   const text=(v,max)=>String(v??'').slice(0,max);
-  const items=list=>(Array.isArray(list)?list:[]).filter(i=>i&&typeof i==='object').map(i=>{
-    const r=num(i.rate);
-    return item(text(i.name,200),num(i.amount),CODE.test(i.cur)?i.cur:d.base,r>0?r:null);
-  });
-  const offsets={};
-  const keepOffset=(from,to)=>{
-    const o=d.offsets&&Object.hasOwn(d.offsets,from)?d.offsets[from]:null;
-    if(Array.isArray(o)&&Number.isFinite(o[0])&&Number.isFinite(o[1]))offsets[to]=[o[0],o[1]];
+  const list=v=>Array.isArray(v)?v.filter(obj):[];
+  const cur=c=>CODE.test(c)?c:d.base;
+  const pos=v=>{const x=num(v);return x>0?x:null};
+  const hex=(c,fb)=>typeof c==='string'&&/^#[0-9a-f]{3,8}$/i.test(c)?c:fb;
+  const day=v=>typeof v==='string'&&/^\d{4}-\d\d-\d\d$/.test(v)?v:null;
+  const offsets=(src,keys)=>{
+    const o={};
+    if(obj(src))for(const k of keys)if(Object.hasOwn(src,k)){const v=src[k];if(Array.isArray(v)&&Number.isFinite(v[0])&&Number.isFinite(v[1]))o[k]=[v[0],v[1]]}
+    return o;
   };
-  keepOffset('hub','hub');
-  const nodes=d.nodes.filter(n=>n&&typeof n==='object').map((n,i)=>{
-    const id=uid();keepOffset(n.id,id);
-    return {id,title:text(n.title,40),color:/^#[0-9a-f]{3,8}$/i.test(n.color)?n.color:PALETTE[i%PALETTE.length],items:items(n.items)};
-  });
   const rates={};
-  for(const [c,v] of Object.entries(d.rates&&typeof d.rates==='object'?d.rates:{}))if(CODE.test(c)&&c!==d.base&&num(v)>0)rates[c]=num(v);
-  return {base:d.base,rates,income:items(d.income),nodes,offsets};
+  for(const [c,v] of Object.entries(obj(d.rates)?d.rates:{}))if(CODE.test(c)&&c!==d.base&&num(v)>0)rates[c]=num(v);
+  // net worth first, so budget links can be checked against the imported debts
+  let worth=null;
+  if(obj(d.worth)){
+    const w=d.worth;
+    const holding=x=>({id:cid(x.id),name:text(x.name,200),cur:cur(x.cur),rate:pos(x.rate),mode:x.mode==='units'?'units':'simple',
+      value:num(x.value),qty:num(x.qty),price:num(x.price),priced:day(x.priced),cost:pos(x.cost)});
+    const owed=x=>({id:cid(x.id),name:text(x.name,200),cur:cur(x.cur),rate:pos(x.rate),balance:num(x.balance),apr:pos(x.apr),payment:pos(x.payment)});
+    const circle=side=>(x,i)=>{
+      const P=side==='a'?ASSET_PRESETS:DEBT_PRESETS,kind=P.some(p=>p.kind===x.kind)?x.kind:'other';
+      const c={id:cid(x.id),title:text(x.title,40),kind,color:hex(x.color,P[i%P.length].color),items:list(x.items).map(side==='a'?holding:owed)};
+      if(x.ex===true)c.ex=true;
+      if(side==='a'&&kind==='tfsa'&&obj(x.tfsa))c.tfsa={year:Math.max(0,num(x.tfsa.year)),life:Math.max(0,num(x.tfsa.life)),
+        ty:Number.isInteger(x.tfsa.ty)?x.tfsa.ty:Money.taxYear(todayISO()).start};
+      return c;
+    };
+    const assets=list(w.assets).map(circle('a')),debts=list(w.debts).map(circle('d'));
+    const snapshots=list(w.snapshots).filter(s=>day(s.date)).map(s=>{
+      const o={id:cid(s.id),date:s.date,assets:num(s.assets),liabilities:num(s.liabilities),net:num(s.net),
+        circles:list(s.circles).map(c=>({id:text(c.id,16),title:text(c.title,40),side:c.side==='d'?'d':'a',total:num(c.total)}))};
+      if(s.ex===true)o.ex=true;
+      return o;
+    }).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+    worth={assets,debts,offsets:offsets(w.offsets,['hub',...assets.map(c=>c.id),...debts.map(c=>c.id)]),snapshots,
+      lastPrompt:typeof w.lastPrompt==='string'&&/^\d{4}-\d\d$/.test(w.lastPrompt)?w.lastPrompt:null};
+  }
+  const debtIds=new Set((worth||now.worth).debts.flatMap(c=>c.items.map(i=>i.id)));
+  const items=v=>list(v).map(i=>{
+    const o={id:cid(i.id),name:text(i.name,200),amount:num(i.amount),cur:cur(i.cur),rate:pos(i.rate)};
+    if(typeof i.link==='string'&&debtIds.has(i.link))o.link=i.link;
+    return o;
+  });
+  const income=items(d.income);
+  const nodes=list(d.nodes).map((n,i)=>{
+    const o={id:cid(n.id),title:text(n.title,40),color:hex(n.color,PALETTE[i%PALETTE.length]),items:items(n.items)};
+    if(n.debts===true)o.debts=true;
+    return o;
+  });
+  const lim=obj(d.tfsaLimits)?d.tfsaLimits:{};
+  const state={v:VERSION,mode:now.mode,privacy:now.privacy,base:d.base,rates,income,nodes,
+    offsets:offsets(d.offsets,['hub',...nodes.map(n=>n.id)]),
+    tfsaLimits:worth?{annual:pos(lim.annual)??TFSA_LIMITS.annual,lifetime:pos(lim.lifetime)??TFSA_LIMITS.lifetime}:now.tfsaLimits,
+    worth:worth||now.worth};
+  return {state,hadWorth:!!worth};
 }
 
 /* ---------- settings ---------- */
@@ -534,7 +701,7 @@ function buildSettings(){
       h('input',{class:'f',id:'base',value:S.base,maxLength:5,'aria-label':'Main currency code',style:'width:96px;text-transform:uppercase',onchange:e=>{
         const nb=(e.target.value||'').trim().toUpperCase()||S.base,old=S.base;
         if(nb===old)return;
-        const all=[S.income,...S.nodes.map(n=>n.items)].flat();
+        const all=allItems();
         all.forEach(i=>{if(i.cur===old)i.cur=nb});
         delete S.rates[nb];S.base=nb;
         // items that were foreign keep their code; the old main currency is now foreign
@@ -549,14 +716,14 @@ function buildSettings(){
           const nc=(e.target.value||'').trim().toUpperCase();
           if(!nc||nc===code||nc===S.base){render();return}
           S.rates[nc]=S.rates[code];delete S.rates[code];
-          [S.income,...S.nodes.map(n=>n.items)].flat().forEach(i=>{if(i.cur===code)i.cur=nc});
+          allItems().forEach(i=>{if(i.cur===code)i.cur=nc});
           commit();render();
         }}),
         h('span',{textContent:'='}),
         h('input',{class:'f num',value:S.rates[code],inputMode:'decimal','aria-label':'Rate in '+S.base,oninput:e=>{S.rates[code]=num(e.target.value)||1;commit()}}),
         h('button',{class:'del',textContent:'✕','aria-label':'Remove currency',onclick:()=>{
           delete S.rates[code];
-          [S.income,...S.nodes.map(n=>n.items)].flat().forEach(i=>{if(i.cur===code)i.cur=S.base});
+          allItems().forEach(i=>{if(i.cur===code)i.cur=S.base});
           commit();render();
         }})));
     });
@@ -567,14 +734,15 @@ function buildSettings(){
     let armed=false,t;
     const fresh=h('button',{class:'btn danger',style:'margin-left:0',id:'fresh',textContent:'Start fresh',onclick:()=>{
       if(!armed){armed=true;fresh.textContent='Tap again to wipe';fresh.classList.add('armed');t=setTimeout(()=>{armed=false;fresh.textContent='Start fresh';fresh.classList.remove('armed')},2600);return}
-      clearTimeout(t);S={base:S.base,rates:S.rates,income:[],nodes:[]};lastCount=-1;commit();render();
+      clearTimeout(t);Object.assign(S,{income:[],nodes:[],offsets:{},worth:emptyWorth()});lastCount=-1;commit();render();
     }});
     const file=h('input',{type:'file',accept:'.json,application/json',id:'import-file',hidden:true,onchange:async e=>{
       const f=e.target.files[0];if(!f)return;
       try{
         if(f.size>2e6)throw new Error('too big');
-        S=cleanImport(JSON.parse(await f.text()));
-        lastCount=-1;commit();dataMsg='Backup imported.';
+        const r=cleanImport(JSON.parse(await f.text()),S);
+        S=r.state;lastCount=-1;commit();
+        dataMsg=r.hadWorth?'Backup imported.':'Budget imported. This older backup has no net worth data, so yours was kept.';
       }catch(err){dataMsg='That file is not a valid Moneymap backup. Nothing was changed.'}
       render();
     }});
@@ -594,7 +762,7 @@ function buildSettings(){
         h('button',{class:'btn',id:'export',textContent:'Export backup',onclick:exportData}),importBtn,file),
       h('div',{class:'note',id:'data-msg',role:'status',textContent:dataMsg}),
       h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
-        h('button',{class:'btn',id:'sample',textContent:'Load example data',onclick:()=>{S=sample();lastCount=-1;commit();render()}}),fresh)
+        h('button',{class:'btn',id:'sample',textContent:'Load example data',onclick:()=>{const b=sample();Object.assign(S,{income:b.income,nodes:b.nodes,offsets:{}});lastCount=-1;commit();render()}}),fresh)
     );
   };
   render();
