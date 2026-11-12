@@ -49,10 +49,12 @@ input,select{font:inherit;color:var(--ink)}
 .node.dragging .in{animation-play-state:paused;box-shadow:0 18px 36px -8px #000,0 0 34px -6px var(--c)}
 .n-title{font-size:12px;font-weight:600;line-height:1.15;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .n-amt{font-family:var(--display);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;color:var(--c)}
+.node.ex .in{border-style:dashed}
+.node:not(.hub) .n-left{font-size:9px;letter-spacing:.1em;text-transform:uppercase}
 .hub .in{background:radial-gradient(circle at 50% 35%,#2a2208,#0e0d0b 70%);border-width:3px}
 .hub .n-title{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
 .hub .n-amt{font-size:21px;color:var(--ink)}
-.hub .n-left{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.hub .n-left{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:pre-line;line-height:1.3}
 
 .bar{position:fixed;left:0;right:0;display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:0 max(16px,env(safe-area-inset-left)) 0 max(16px,env(safe-area-inset-right));pointer-events:none;z-index:5}
@@ -70,6 +72,16 @@ input,select{font:inherit;color:var(--ink)}
 .stat b{display:block;font-family:var(--display);font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .add{width:46px;height:46px;border-radius:50%;border:0;background:var(--gold);color:#17130a;font-size:26px;line-height:1;font-weight:500;flex:none}
 .add:hover{filter:brightness(1.1)}
+.seg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:2px;padding:3px;border:1px solid var(--line);background:#121110ee;border-radius:24px;backdrop-filter:blur(8px)}
+.seg button{height:34px;border:0;border-radius:17px;padding:0 14px;background:transparent;color:var(--mute);font-size:13px;font-weight:600;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--gold);color:#17130a}
+@media (max-width:519px){.seg{top:56px;transform:translateX(-50%)}}
+#notice{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(max(14px,env(safe-area-inset-bottom)) + 76px);z-index:6;display:none;
+  align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 10px;width:max-content;max-width:calc(100% - 32px);padding:8px 8px 8px 16px;
+  border:1px solid var(--line);background:#121110ee;border-radius:24px;font-size:13px;backdrop-filter:blur(8px)}
+#notice.show{display:flex}
+#notice .btn{height:32px;padding:0 12px;font-size:13px}
 #hint{position:fixed;left:0;right:0;top:62%;text-align:center;color:var(--mute);font-size:14px;pointer-events:none;display:none;padding:0 24px}
 
 /* card */
@@ -111,8 +123,30 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 .note{font-size:12px;color:var(--mute);line-height:1.45}
 .srow{display:grid;grid-template-columns:84px 14px 1fr 30px;gap:6px;align-items:center}
 .srow span{color:var(--mute);text-align:center}
+/* net worth cards */
+.hold{padding-bottom:12px;border-bottom:1px solid #1f1d19}
+.hold:last-child{border-bottom:0}
+.sub2{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);padding:0 4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.sub2 .f{width:96px;height:30px;border-radius:10px}
+.sub2 .f.w64{width:64px}
+.ro{display:flex;align-items:center;justify-content:flex-end;background:#141310;overflow:hidden;white-space:nowrap;font-size:13px}
+.mini{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
+.mini button{height:28px;border:0;background:transparent;color:var(--mute);font-size:12px;font-weight:600;padding:0 10px}
+.mini button[aria-pressed=true]{background:#2a2820;color:var(--ink)}
+.stale{color:#f2a14b}
+.f.stale{border-color:#f2a14b;color:#f2a14b}
+.up{color:var(--good)}
+.down{color:var(--bad)}
+.gain{font-weight:600}
+.exnote{border:1px dashed var(--line);border-radius:12px;padding:8px 12px}
+.picker{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chip{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:1px solid var(--line);background:#1a1915;border-radius:14px;text-align:left;font-size:13px;font-weight:600;line-height:1.2}
+.chip:hover{border-color:var(--c)}
+.brk{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center;font-size:14px}
+.brk b{font-weight:600;font-variant-numeric:tabular-nums}
 
 @media (max-width:420px){.stat b{font-size:13px}.pill{padding-left:14px}}
+@media (max-width:519px){.node.ex .n-title{-webkit-line-clamp:1}}
 @media (prefers-reduced-motion:reduce){
   .node .in,.flow{animation:none}
   #card,.cbody,#scrim,.node{transition-duration:.01s;transition-delay:0s}
@@ -122,9 +156,14 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 <body>
 <div id="stage"><div id="world"><svg id="lines"></svg></div></div>
 <div id="hint">Tap + to add your first expense circle.</div>
+<div id="notice" role="status"></div>
 
 <div class="bar" id="top">
   <div class="brand">money<i>map</i></div>
+  <div class="seg" role="group" aria-label="View">
+    <button id="m-budget" aria-pressed="true">Budget</button>
+    <button id="m-worth" aria-pressed="false">Net worth</button>
+  </div>
   <div class="tools">
     <button class="round" id="fit" aria-label="Fit map to screen" title="Fit to screen">⤢</button>
     <button class="round" id="gear" aria-label="Settings" title="Currency and data">⚙</button>
@@ -133,9 +172,9 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 <div class="bar" id="bottom">
   <div class="pill">
     <div class="stats">
-      <div class="stat"><small>In</small><b id="s-in"></b></div>
-      <div class="stat"><small>Out</small><b id="s-out"></b></div>
-      <div class="stat"><small>Left</small><b id="s-left"></b></div>
+      <div class="stat"><small id="l-in">In</small><b id="s-in"></b></div>
+      <div class="stat"><small id="l-out">Out</small><b id="s-out"></b></div>
+      <div class="stat"><small id="l-left">Left</small><b id="s-left"></b></div>
     </div>
     <button class="add" id="add" aria-label="Add expense circle" title="Add expense circle">+</button>
   </div>
@@ -245,6 +284,10 @@ function compact(n){
   if(a>=1e4)return s+(a/1e3).toFixed(1).replace(/\.0$/,'')+'k';
   return s+Math.round(a).toLocaleString('en-US');
 }
+const nat=(v,cur)=>(v<0?'−':'')+sym(cur)+fmt(Math.abs(v)); // an amount in its own currency
+const signed=n=>(n>=0?'+':'−')+sym(S.base)+fmt(Math.abs(n));
+const pctS=p=>(p>=0?'+':'−')+Math.abs(p).toFixed(1)+'%';
+const fmtPct=p=>(Math.round(p*10)/10)+'%';
 const inBase=it=>Money.toBase(it.amount,it.cur,it.rate,S);
 const sum=items=>items.reduce((a,i)=>a+inBase(i),0);
 const incomeTotal=()=>sum(S.income);
@@ -328,10 +371,13 @@ const $=id=>document.getElementById(id);
 const stage=$('stage'),world=$('world'),lines=$('lines');
 
 /* ---------- map ---------- */
-let tx=0,ty=0,sc=1,lastCount=-1,worldW=0,worldH=0;
+let tx=0,ty=0,sc=1,lastKey='',worldW=0,worldH=0;
 const els=new Map();
 let pts={}; // key -> {ax,ay auto-layout spot; x,y current centre; r}
-const offOf=k=>(S.offsets&&S.offsets[k])||[0,0];
+let curIds=[],padTop=70; // circle ids in line order; top padding of the current layout
+// each mode keeps its own dragged positions
+const offStore=()=>S.mode==='worth'?S.worth.offsets:(S.offsets||(S.offsets={}));
+const offOf=k=>{const o=offStore();return Object.hasOwn(o,k)?o[k]:[0,0]};
 function applyView(){world.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`}
 function fit(){
   const W=stage.clientWidth,H=stage.clientHeight;
@@ -339,7 +385,7 @@ function fit(){
   let x0=0,y0=0,x1=worldW,y1=worldH;
   for(const p of Object.values(pts)){
     x0=Math.min(x0,p.x-p.r-8);x1=Math.max(x1,p.x+p.r+8);
-    y0=Math.min(y0,p.y-p.r-70);y1=Math.max(y1,p.y+p.r+96);
+    y0=Math.min(y0,p.y-p.r-padTop);y1=Math.max(y1,p.y+p.r+96);
   }
   const bw=x1-x0,bh=y1-y0,grown=bw>worldW+1||bh>worldH+1;
   sc=Math.max(grown?.3:.5,Math.min(1,W/bw,H/bh));
@@ -354,21 +400,37 @@ function curve(hub,p,ni){
 }
 function moveNode(key,dx,dy,el){
   const p=pts[key];if(!p)return;
-  (S.offsets||(S.offsets={}))[key]=[Math.round(dx*10)/10,Math.round(dy*10)/10];
+  offStore()[key]=[Math.round(dx*10)/10,Math.round(dy*10)/10];
   p.x=p.ax+dx;p.y=p.ay+dy;
   el.style.left=(p.x-p.r)+'px';el.style.top=(p.y-p.r)+'px';
   // update the existing paths so the flow animation keeps running
-  S.nodes.forEach((n,ni)=>{
-    if(key!=='hub'&&n.id!==key)return;
-    const d=curve(pts.hub,pts[n.id],ni);
+  curIds.forEach((id,ni)=>{
+    if(key!=='hub'&&id!==key)return;
+    const d=curve(pts.hub,pts[id],ni);
     lines.children[2*ni].setAttribute('d',d);lines.children[2*ni+1].setAttribute('d',d);
   });
 }
 
+// What the map shows in the current mode: circles, their totals, and the arcs they sit on.
+function viewModel(){
+  if(S.mode==='worth'){
+    const list=[
+      ...S.worth.assets.map(c=>({c,kind:'asset',side:'a',total:Money.circleTotal(c,'a',S)})),
+      ...S.worth.debts.map(c=>({c,kind:'debt',side:'d',total:Money.circleTotal(c,'d',S)}))];
+    const idx=side=>list.map((x,i)=>x.side===side?i:-1).filter(i=>i>=0);
+    // assets on the upper arc, liabilities on the lower arc
+    return {list,nw:Money.netWorth(S.worth.assets,S.worth.debts,S),cap:stage.clientWidth<520?3:4,capInc:3,
+      groups:[{idx:idx('a'),start:-180,span:180},{idx:idx('d'),start:0,span:180}]};
+  }
+  const list=S.nodes.map(c=>({c,kind:'node',side:'b',total:sum(c.items)}));
+  return {list,cap:7,capInc:5,groups:[{idx:list.map((x,i)=>i),start:-90,span:360,full:true}]};
+}
+
 function renderMap(){
-  const W=stage.clientWidth,H=stage.clientHeight,narrow=W<520;
-  const padTop=70,padBot=96;
-  const totals=S.nodes.map(n=>sum(n.items));
+  const W=stage.clientWidth,H=stage.clientHeight,narrow=W<520,worth=S.mode==='worth';
+  padTop=narrow?118:70;const padBot=96; // narrow screens put the mode toggle on its own row
+  const V=viewModel(),list=V.list;
+  const totals=list.map(x=>x.total);
   const maxV=Math.max(1,...totals);
   const rMin=narrow?34:40,rSpan=narrow?24:32,hubR=narrow?60:72;
   const radii=totals.map(v=>rMin+rSpan*Math.sqrt(Math.max(v,0)/maxV));
@@ -377,10 +439,14 @@ function renderMap(){
   const rx0=Math.max(hubR+maxR+26,W/2-maxR-8);
   const ry0=Math.max(hubR+maxR+26,availH/2-maxR-8);
   const gap=2*maxR+24;
-  // split nodes into rings
-  const rings=[];let i=0,cap=7;
-  while(i<S.nodes.length){rings.push(S.nodes.slice(i,i+cap).map((n,j)=>i+j));i+=cap;cap+=5}
-  const last=Math.max(0,rings.length-1);
+  // each group fills its own arc; a big group spills onto outer rings
+  const placed=[];let rings=1;
+  for(const g of V.groups){
+    let i=0,cap=V.cap,k=0;
+    while(i<g.idx.length){placed.push({k,ids:g.idx.slice(i,i+cap),g});i+=cap;cap+=V.capInc;k++}
+    rings=Math.max(rings,k);
+  }
+  const last=rings-1;
   const rxL=rx0+last*gap,ryL=ry0+last*gap;
   worldW=Math.max(W,2*(rxL+maxR+8));
   const innerH=Math.max(availH,2*(ryL+maxR+8));
@@ -390,28 +456,34 @@ function renderMap(){
   lines.setAttribute('width',worldW);lines.setAttribute('height',worldH);
 
   const pos={};
-  rings.forEach((idxs,k)=>{
-    const step=360/idxs.length,off=k%2?step/2:0;
-    idxs.forEach((ni,j)=>{
-      const a=(-90+off+step*j)*Math.PI/180;
+  const prevN=new Map();
+  for(const {k,ids,g} of placed){
+    const n=ids.length,n0=prevN.get(g)||n;prevN.set(g,n);
+    let angle;
+    if(g.full){const step=360/n,off=k%2?step/2:0;angle=j=>g.start+off+step*j} // the original budget layout
+    else if(k%2&&n<n0){const step=g.span/n0,skip=Math.floor((n0-1-n)/2);angle=j=>g.start+step*(j+1+skip)} // sit in the inner ring's gaps
+    else if(k%2){const step=g.span/(n+1);angle=j=>g.start+step*(j+1)}
+    else{const step=g.span/n;angle=j=>g.start+step*(j+.5)}
+    ids.forEach((ni,j)=>{
+      const a=angle(j)*Math.PI/180;
       pos[ni]=[cx+Math.cos(a)*(rx0+k*gap),cy+Math.sin(a)*(ry0+k*gap)];
     });
-  });
+  }
 
   // current positions: auto-layout spot plus any saved drag offset
   pts={};
   const pt=(key,ax,ay,r)=>{const [dx,dy]=offOf(key);return pts[key]={ax,ay,x:ax+dx,y:ay+dy,r}};
   pt('hub',cx,cy,hubR);
-  S.nodes.forEach((n,ni)=>pt(n.id,pos[ni][0],pos[ni][1],radii[ni]));
+  list.forEach((x,ni)=>pt(x.c.id,pos[ni][0],pos[ni][1],radii[ni]));
+  curIds=list.map(x=>x.c.id);
 
-  // lines
-  const inc=incomeTotal(),spent=spentTotal();
+  // lines, thicker for bigger values
   let svg='';
-  S.nodes.forEach((n,ni)=>{
-    const d=curve(pts.hub,pts[n.id],ni);
+  list.forEach((x,ni)=>{
+    const d=curve(pts.hub,pts[x.c.id],ni);
     const w=1.5+5*Math.sqrt(Math.max(totals[ni],0)/maxV);
-    svg+=`<path d="${d}" fill="none" stroke="${n.color}" stroke-opacity=".28" stroke-width="${w.toFixed(1)}" stroke-linecap="round"/>`;
-    svg+=`<path class="flow" d="${d}" fill="none" stroke="${n.color}" stroke-width="${(w+1.5).toFixed(1)}"/>`;
+    svg+=`<path d="${d}" fill="none" stroke="${x.c.color}" stroke-opacity=".28" stroke-width="${w.toFixed(1)}" stroke-linecap="round"/>`;
+    svg+=`<path class="flow" d="${d}" fill="none" stroke="${x.c.color}" stroke-width="${(w+1.5).toFixed(1)}"/>`;
   });
   lines.innerHTML=svg;
 
@@ -421,10 +493,11 @@ function renderMap(){
     seen.add(key);
     let el=els.get(key);
     if(!el){
-      el=h('div',{class:'node '+(cls||''),onclick:onTap},h('div',{class:'in'},h('div',{class:'n-title'}),h('div',{class:'n-amt'}),h('div',{class:'n-left'})));
+      el=h('div',{class:'node '+(cls||''),onclick:e=>e.currentTarget._tap()},h('div',{class:'in'},h('div',{class:'n-title'}),h('div',{class:'n-amt'}),h('div',{class:'n-left'})));
       el.dataset.key=key;
       world.append(el);els.set(key,el);
     }
+    el._tap=onTap;
     el.style.cssText=`left:${x-r}px;top:${y-r}px;width:${2*r}px;height:${2*r}px;`;
     const inn=el.firstChild;
     inn.style.setProperty('--c',color);inn.style.setProperty('--d',hashDelay(key));
@@ -433,17 +506,33 @@ function renderMap(){
     inn.children[2].style.color=extra?extra.color:'';
     inn.children[1].style.color=cls==='hub'?'':color;
   };
-  const left=inc-spent;
-  place('hub',pts.hub.x,pts.hub.y,hubR,GOLD,'Income',compact(inc),{text:(left<0?'over by ':'left ')+compact(Math.abs(left)),color:left<0?'var(--bad)':'var(--good)'},()=>openCard({kind:'income'}),'hub');
-  S.nodes.forEach((n,ni)=>place(n.id,pts[n.id].x,pts[n.id].y,radii[ni],n.color,n.title||'Untitled',compact(totals[ni]),null,()=>openCard({kind:'node',id:n.id})));
+  let stats;
+  if(worth){
+    const {assets,liabilities,net}=V.nw;
+    place('hub',pts.hub.x,pts.hub.y,hubR,GOLD,'Net worth',compact(net),{text:`assets ${compact(assets)}\ndebts ${compact(liabilities)}`,color:'var(--mute)'},()=>openCard({kind:'worth'}),'hub');
+    els.get('hub').firstChild.children[1].style.color=net<0?'var(--bad)':'';
+    stats=[['Assets',compact(assets),''],['Debts',compact(liabilities),''],['Net worth',compact(net),net<0?'var(--bad)':'var(--good)']];
+  }else{
+    const inc=incomeTotal(),spent=spentTotal(),left=inc-spent;
+    place('hub',pts.hub.x,pts.hub.y,hubR,GOLD,'Income',compact(inc),{text:(left<0?'over by ':'left ')+compact(Math.abs(left)),color:left<0?'var(--bad)':'var(--good)'},()=>openCard({kind:'income'}),'hub');
+    stats=[['In',compact(inc),''],['Out',compact(spent),''],['Left',compact(left),left<0?'var(--bad)':'var(--good)']];
+  }
+  list.forEach((x,ni)=>place(x.c.id,pts[x.c.id].x,pts[x.c.id].y,radii[ni],x.c.color,x.c.title||'Untitled',compact(totals[ni]),
+    x.c.ex?{text:'example',color:'var(--mute)'}:null,()=>openCard({kind:x.kind,id:x.c.id})));
+  list.forEach(x=>els.get(x.c.id).classList.toggle('ex',!!x.c.ex));
   for(const [k,el] of els)if(!seen.has(k)){el.remove();els.delete(k)}
 
-  $('hint').style.display=S.nodes.length?'none':'block';
-  $('s-in').textContent=compact(inc);
-  $('s-out').textContent=compact(spent);
-  const sl=$('s-left');sl.textContent=compact(left);sl.style.color=left<0?'var(--bad)':'var(--good)';
+  // surrounding chrome follows the mode
+  $('hint').textContent=worth?'Tap + to add your first asset or debt circle.':'Tap + to add your first expense circle.';
+  $('hint').style.display=list.length?'none':'block';
+  ['in','out','left'].forEach((id,i)=>{$('l-'+id).textContent=stats[i][0];const b=$('s-'+id);b.textContent=stats[i][1];b.style.color=stats[i][2]});
+  $('m-budget').setAttribute('aria-pressed',String(!worth));$('m-worth').setAttribute('aria-pressed',String(worth));
+  const add=$('add'),label=worth?'Add asset or debt circle':'Add expense circle';
+  add.setAttribute('aria-label',label);add.title=label;
+  renderNotice();
 
-  if(lastCount!==S.nodes.length){lastCount=S.nodes.length;fit()}
+  const key=S.mode+':'+list.length;
+  if(lastKey!==key){lastKey=key;fit()}
 }
 function commit(){save();renderMap()}
 
@@ -508,7 +597,8 @@ let open=null;
 function originRect(ref){
   let el=null;
   if(ref.kind==='settings')el=$('gear');
-  else if(ref.kind==='income')el=els.get('hub');
+  else if(ref.kind==='add')el=$('add');
+  else if(ref.kind==='income'||ref.kind==='worth')el=els.get('hub');
   else el=els.get(ref.id);
   return el?el.getBoundingClientRect():null;
 }
@@ -519,15 +609,17 @@ function setGeo(card,r,radius){
 function openCard(ref){
   if(open)closeCard(true);
   const r=originRect(ref)||{left:innerWidth/2-30,top:innerHeight/2-30,width:60,height:60};
-  const color=ref.kind==='income'||ref.kind==='settings'?GOLD:(S.nodes.find(n=>n.id===ref.id)||{}).color;
-  const body=ref.kind==='settings'?buildSettings():buildCard(ref);
+  const owner=ref.id&&[...S.nodes,...S.worth.assets,...S.worth.debts].find(n=>n.id===ref.id);
+  const color=owner?owner.color:GOLD;
+  const body=ref.kind==='settings'?buildSettings():ref.kind==='worth'?buildWorthHub():ref.kind==='add'?buildPicker()
+    :ref.kind==='asset'||ref.kind==='debt'?buildWorthCard(ref):buildCard(ref);
   const card=h('div',{id:'card',role:'dialog','aria-modal':'true'},body);
   card.style.setProperty('--c',color);
   const scrim=h('div',{id:'scrim',onclick:()=>closeCard()});
   document.body.append(scrim,card);
   setGeo(card,r,'50%');
   open={card,scrim,ref,body};
-  const w=Math.min(innerWidth-24,440),hh=Math.min(innerHeight-40,ref.kind==='settings'?580:620);
+  const w=Math.min(innerWidth-24,440),hh=Math.min(innerHeight-40,{settings:640,add:560,worth:680}[ref.kind]||620);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     if(!open||open.card!==card)return;
     setGeo(card,{left:(innerWidth-w)/2,top:(innerHeight-hh)/2,width:w,height:hh},'28px');
@@ -615,6 +707,201 @@ function rowEl(items,it,changed,rerender){
   }
   upd();
   return wrap;
+}
+
+/* ---------- net worth ---------- */
+const xBtn=()=>h('button',{class:'x',id:'close',textContent:'✕','aria-label':'Close',onclick:()=>closeCard()});
+const amtInput=props=>h('input',{class:'f num',inputMode:'decimal',placeholder:'0',autocomplete:'off',...props});
+const curSelect=(it,changed,rerender)=>h('select',{class:'f',id:'c-'+it.id,'aria-label':'Currency',onchange:e=>{it.cur=e.target.value;if(it.cur===S.base)it.rate=null;changed();rerender()}},
+  [...new Set([S.base,...Object.keys(S.rates),it.cur])].map(c=>h('option',{value:c,textContent:c,selected:c===it.cur})));
+// "1 USD = [18.2] ZAR  = R1,820" line for anything not in the main currency
+function fxLine(it,conv,upd,changed){
+  if(it.cur===S.base)return null;
+  return h('div',{class:'rate'},h('span',{textContent:`1 ${it.cur} =`}),
+    h('input',{class:'f',id:'r-'+it.id,value:it.rate||'',placeholder:String(S.rates[it.cur]||1),inputMode:'decimal','aria-label':'Conversion rate',
+      oninput:e=>{const v=num(e.target.value);it.rate=v>0?v:null;upd();changed()}}),
+    h('span',{textContent:S.base}),conv);
+}
+const hasExamples=()=>{const w=S.worth;return w.assets.some(c=>c.ex)||w.debts.some(c=>c.ex)||w.snapshots.some(s=>s.ex)};
+function clearExamples(){
+  const w=S.worth;
+  for(const c of [...w.assets,...w.debts])if(c.ex)delete w.offsets[c.id];
+  w.assets=w.assets.filter(c=>!c.ex);w.debts=w.debts.filter(c=>!c.ex);w.snapshots=w.snapshots.filter(s=>!s.ex);
+  commit();
+}
+function addExamples(){
+  const ex=exampleWorth(),w=S.worth;
+  w.assets.push(...ex.assets);w.debts.push(...ex.debts);w.snapshots.push(...ex.snapshots);
+  w.snapshots.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  commit();
+}
+function setMode(m){if(S.mode===m)return;S.mode=m;save();renderMap()}
+function renderNotice(){
+  const box=$('notice');let kids=null;
+  if(S.mode==='worth'&&hasExamples())
+    kids=[h('span',{textContent:'Showing example figures.'}),h('button',{class:'btn',id:'notice-clear',textContent:'Clear examples',onclick:clearExamples})];
+  box.classList.toggle('show',!!kids);box.replaceChildren(...(kids||[]));
+}
+
+function holdingEl(it,{items,changed,rerender}){
+  const today=todayISO(),units=it.mode==='units';
+  const wrap=h('div',{class:'row hold'});
+  const conv=h('span',{class:'conv'}),gainS=h('span',{class:'gain',id:'g-'+it.id}),ageS=h('span',{id:'age-'+it.id});
+  const valOut=h('output',{class:'f num ro',id:'v-'+it.id,'aria-label':'Value'});
+  let priceIn=null;
+  const upd=()=>{
+    valOut.textContent=nat(Money.holdingValue(it),it.cur);
+    const g=Money.gain(it,S);
+    gainS.textContent=g?`${signed(g.gain)} (${pctS(g.pct)})`:'';
+    gainS.className='gain '+(g?(g.gain>=0?'up':'down'):'');
+    conv.textContent='= '+money(Money.holdingBase(it,S));
+    if(units){
+      const stale=Money.isStale(it.priced,today);
+      ageS.textContent=it.priced?`Price from ${fmtDate(it.priced)}${stale?', over 30 days old':''}`:'Add a price per unit';
+      ageS.className=stale?'stale':'';priceIn.classList.toggle('stale',stale);
+    }
+  };
+  const modeBtn=m=>h('button',{type:'button',textContent:m==='units'?'Units':'Value','aria-pressed':String(it.mode===m),onclick:()=>{
+    if(it.mode===m)return;
+    if(m==='simple'&&!num(it.value))it.value=Money.holdingValue(it); // keep the total when leaving units
+    it.mode=m;changed();rerender();
+  }});
+  wrap.append(
+    h('input',{class:'f',id:'n-'+it.id,value:it.name,placeholder:'Name','aria-label':'Holding name',oninput:e=>{it.name=e.target.value;changed()}}),
+    units?valOut:amtInput({id:'a-'+it.id,value:it.value||'','aria-label':'Current value',oninput:e=>{it.value=num(e.target.value);upd();changed()}}),
+    curSelect(it,changed,rerender),
+    h('button',{class:'del',textContent:'✕','aria-label':'Remove holding',onclick:()=>{const i=items.indexOf(it);if(i>-1)items.splice(i,1);changed();rerender()}}));
+  const line=h('div',{class:'sub2'},h('div',{class:'mini',role:'group','aria-label':'How to value it'},modeBtn('simple'),modeBtn('units')));
+  if(units){
+    priceIn=amtInput({id:'p-'+it.id,value:it.price||'','aria-label':'Price per unit',oninput:e=>{it.price=num(e.target.value);it.priced=today;upd();changed()}});
+    line.append(h('input',{class:'f num w64',id:'q-'+it.id,value:it.qty||'',placeholder:'qty',inputMode:'decimal','aria-label':'Quantity',
+      oninput:e=>{it.qty=num(e.target.value);upd();changed()}}),h('span',{textContent:'×'}),priceIn);
+  }
+  wrap.append(line);
+  if(units)wrap.append(h('div',{class:'sub2'},ageS));
+  wrap.append(h('div',{class:'sub2'},h('span',{textContent:'Cost'}),
+    amtInput({id:'cb-'+it.id,value:it.cost||'',placeholder:'optional','aria-label':'Cost basis',oninput:e=>{const v=num(e.target.value);it.cost=v>0?v:null;upd();changed()}}),gainS));
+  const fx=fxLine(it,conv,upd,changed);if(fx)wrap.append(fx);
+  upd();
+  return wrap;
+}
+
+function debtEl(it,{items,changed,rerender}){
+  const wrap=h('div',{class:'row hold'}),conv=h('span',{class:'conv'});
+  const upd=()=>{conv.textContent='= '+money(Money.debtBase(it,S))};
+  wrap.append(
+    h('input',{class:'f',id:'n-'+it.id,value:it.name,placeholder:'Name','aria-label':'Debt name',oninput:e=>{it.name=e.target.value;changed()}}),
+    amtInput({id:'b-'+it.id,value:it.balance||'','aria-label':'Balance owed',oninput:e=>{it.balance=num(e.target.value);upd();changed()}}),
+    curSelect(it,changed,rerender),
+    h('button',{class:'del',textContent:'✕','aria-label':'Remove debt',onclick:()=>{const i=items.indexOf(it);if(i>-1)items.splice(i,1);changed();rerender()}}));
+  const line=h('div',{class:'sub2'},
+    h('input',{class:'f num w64',id:'i-'+it.id,value:it.apr??'',placeholder:'—',inputMode:'decimal','aria-label':'Interest rate per year',
+      oninput:e=>{const v=num(e.target.value);it.apr=v>0?v:null;changed()}}),
+    h('span',{textContent:'% a year'}),
+    amtInput({id:'pay-'+it.id,value:it.payment||'',placeholder:'optional','aria-label':'Monthly payment',
+      oninput:e=>{const v=num(e.target.value);it.payment=v>0?v:null;changed()}}),
+    h('span',{textContent:'a month'}));
+  wrap.append(line);
+  const fx=fxLine(it,conv,upd,changed);if(fx)wrap.append(fx);
+  upd();
+  return wrap;
+}
+
+function buildWorthCard(ref){
+  const side=ref.kind==='asset'?'a':'d',group=side==='a'?S.worth.assets:S.worth.debts;
+  const c=group.find(x=>x.id===ref.id),items=c.items;
+  const preset=(side==='a'?ASSET_PRESETS:DEBT_PRESETS).find(p=>p.kind===c.kind)||{};
+  const total=h('div',{class:'total'}),sub=h('div',{class:'sub'}),list=h('div',{class:'list'});
+  const exNote=h('div',{class:'note exnote',id:'ex-note',textContent:'Example figures. Edit anything here and this circle becomes yours. "Clear examples" removes the rest.'});
+  let extra=null;
+  const update=()=>{
+    const today=todayISO(),t=Money.circleTotal(c,side,S),nw=Money.netWorth(S.worth.assets,S.worth.debts,S),parts=[];
+    total.textContent=money(t);
+    if(side==='a'){
+      if(nw.assets>0)parts.push(fmtPct(t/nw.assets*100)+' of assets');
+      const g=Money.gainTotal(items,S);
+      if(g)parts.push(h('span',{class:'gain '+(g.gain>=0?'up':'down'),id:'gain-total',textContent:`${signed(g.gain)} (${pctS(g.pct)})`}));
+      const st=items.filter(i=>i.mode==='units'&&Money.isStale(i.priced,today)).length;
+      if(st)parts.push(h('span',{class:'stale',textContent:st===1?'1 old price':st+' old prices'}));
+    }else{
+      if(nw.liabilities>0)parts.push(fmtPct(t/nw.liabilities*100)+' of debt');
+      const pay=items.reduce((a,d)=>a+Money.toBase(d.payment,d.cur,d.rate,S),0);
+      if(pay>0)parts.push(money(pay)+' a month');
+    }
+    parts.push(items.length+' '+(side==='a'?(items.length===1?'holding':'holdings'):(items.length===1?'debt':'debts')));
+    sub.replaceChildren(...parts.map(p=>typeof p==='string'?h('span',{textContent:p}):p));
+    if(extra)extra.update();
+  };
+  const changed=()=>{if(c.ex){delete c.ex;exNote.remove()}update();commit()};
+  const ctx={items,changed,rerender:null};
+  const renderRows=()=>{
+    list.replaceChildren();
+    if(c.ex)list.append(exNote);
+    extra=null;
+    if(!items.length)list.append(h('div',{class:'empty',textContent:side==='a'?'Add what you own here, like an account, fund or property.':'Add what you owe here, like a loan or a card balance.'}));
+    items.forEach(it=>list.append(side==='a'?holdingEl(it,ctx):debtEl(it,ctx)));
+  };
+  ctx.rerender=renderRows;
+  const title=h('input',{class:'title-in',id:'node-title',value:c.title,placeholder:'Title',maxLength:40,'aria-label':'Title',oninput:e=>{c.title=e.target.value;changed()}});
+  const addBtn=h('button',{class:'btn main',id:'add-item',textContent:side==='a'?'+ Add holding':'+ Add debt',onclick:()=>{
+    items.push(side==='a'?hold('',{cur:S.base,mode:preset.units?'units':'simple'}):debt('',{cur:S.base}));
+    changed();renderRows();
+    const rows=list.querySelectorAll('.hold'),last=rows[rows.length-1];
+    if(last){last.scrollIntoView({block:'nearest'});last.querySelector('input').focus()}
+  }});
+  let armed=false,timer;
+  const del=h('button',{class:'btn danger',id:'del-node',textContent:'Delete circle',onclick:()=>{
+    if(!armed){armed=true;del.textContent='Tap again to delete';del.classList.add('armed');timer=setTimeout(()=>{armed=false;del.textContent='Delete circle';del.classList.remove('armed')},2600);return}
+    clearTimeout(timer);closeCard();
+    const i=group.indexOf(c);if(i>-1)group.splice(i,1);
+    delete S.worth.offsets[c.id];commit();
+  }});
+  const body=h('div',{class:'cbody'},
+    h('div',{class:'chead'},h('span',{class:'dot'}),title,xBtn()),
+    h('div',{class:'sum'},total,sub),list,h('div',{class:'cfoot'},addBtn,del));
+  renderRows();update();
+  return body;
+}
+
+function buildWorthHub(){
+  const nw=Money.netWorth(S.worth.assets,S.worth.debts,S);
+  const total=h('div',{class:'total',textContent:money(nw.net)});
+  if(nw.net<0)total.style.color='var(--bad)';
+  const sub=h('div',{class:'sub'},h('span',{textContent:money(nw.assets)+' assets'}),h('span',{textContent:money(nw.liabilities)+' debts'}));
+  const g=Money.gainTotal(S.worth.assets.flatMap(c=>c.items),S);
+  if(g)sub.append(h('span',{class:'gain '+(g.gain>=0?'up':'down'),textContent:`${signed(g.gain)} (${pctS(g.pct)}) on cost`}));
+  const list=h('div',{class:'list'});
+  for(const [label,group,side] of [['Assets',S.worth.assets,'a'],['Liabilities',S.worth.debts,'d']]){
+    if(!group.length)continue;
+    list.append(h('div',{class:'sec',textContent:label}));
+    for(const c of group){
+      const r=h('div',{class:'brk'},h('span',{class:'dot'}),h('span',{textContent:(c.title||'Untitled')+(c.ex?' (example)':'')}),h('b',{textContent:money(Money.circleTotal(c,side,S))}));
+      r.style.setProperty('--c',c.color);list.append(r);
+    }
+  }
+  if(!list.children.length)list.append(h('div',{class:'empty',textContent:'Tap + to add what you own and what you owe.'}));
+  return h('div',{class:'cbody'},
+    h('div',{class:'chead'},h('span',{class:'dot'}),h('h2',{class:'title-in',textContent:'Net worth'}),xBtn()),
+    h('div',{class:'sum'},total,sub),list);
+}
+
+function buildPicker(){
+  const pick=(side,p)=>{
+    const c={id:uid(),title:p.title,kind:p.kind,color:p.color,items:[]};
+    (side==='a'?S.worth.assets:S.worth.debts).push(c);
+    closeCard(true);commit();
+    requestAnimationFrame(()=>openCard({kind:side==='a'?'asset':'debt',id:c.id}));
+  };
+  const chips=(side,P)=>h('div',{class:'picker'},P.map(p=>{
+    const b=h('button',{class:'chip',id:`pick-${side}-${p.kind}`,onclick:()=>pick(side,p)},h('span',{class:'dot'}),h('span',{textContent:p.label||p.title}));
+    b.style.setProperty('--c',p.color);return b;
+  }));
+  return h('div',{class:'cbody'},
+    h('div',{class:'chead'},h('span',{class:'dot'}),h('h2',{class:'title-in',textContent:'Add a circle'}),xBtn()),
+    h('div',{class:'list'},
+      h('div',{class:'sec',textContent:'Assets: what you own'}),chips('a',ASSET_PRESETS),
+      h('div',{class:'sec',textContent:'Liabilities: what you owe'}),chips('d',DEBT_PRESETS),
+      h('div',{class:'note',textContent:'You can rename any circle after adding it.'})));
 }
 
 /* ---------- backup ---------- */
@@ -734,14 +1021,14 @@ function buildSettings(){
     let armed=false,t;
     const fresh=h('button',{class:'btn danger',style:'margin-left:0',id:'fresh',textContent:'Start fresh',onclick:()=>{
       if(!armed){armed=true;fresh.textContent='Tap again to wipe';fresh.classList.add('armed');t=setTimeout(()=>{armed=false;fresh.textContent='Start fresh';fresh.classList.remove('armed')},2600);return}
-      clearTimeout(t);Object.assign(S,{income:[],nodes:[],offsets:{},worth:emptyWorth()});lastCount=-1;commit();render();
+      clearTimeout(t);Object.assign(S,{income:[],nodes:[],offsets:{},worth:emptyWorth()});lastKey='';commit();render();
     }});
     const file=h('input',{type:'file',accept:'.json,application/json',id:'import-file',hidden:true,onchange:async e=>{
       const f=e.target.files[0];if(!f)return;
       try{
         if(f.size>2e6)throw new Error('too big');
         const r=cleanImport(JSON.parse(await f.text()),S);
-        S=r.state;lastCount=-1;commit();
+        S=r.state;lastKey='';commit();
         dataMsg=r.hadWorth?'Backup imported.':'Budget imported. This older backup has no net worth data, so yours was kept.';
       }catch(err){dataMsg='That file is not a valid Moneymap backup. Nothing was changed.'}
       render();
@@ -761,8 +1048,15 @@ function buildSettings(){
       h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
         h('button',{class:'btn',id:'export',textContent:'Export backup',onclick:exportData}),importBtn,file),
       h('div',{class:'note',id:'data-msg',role:'status',textContent:dataMsg}),
+      h('div',{class:'sec',textContent:'Examples'}),
+      h('div',{class:'note',textContent:'Net worth examples use invented South African figures and are marked "example" on the map.'}),
       h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
-        h('button',{class:'btn',id:'sample',textContent:'Load example data',onclick:()=>{const b=sample();Object.assign(S,{income:b.income,nodes:b.nodes,offsets:{}});lastCount=-1;commit();render()}}),fresh)
+        hasExamples()
+          ?h('button',{class:'btn',id:'clear-ex',textContent:'Clear examples',onclick:()=>{clearExamples();render()}})
+          :h('button',{class:'btn',id:'add-ex',textContent:'Add net worth examples',onclick:()=>{addExamples();render()}}),
+        h('button',{class:'btn',id:'sample',textContent:'Load example budget',onclick:()=>{const b=sample();Object.assign(S,{income:b.income,nodes:b.nodes,offsets:{}});lastKey='';commit();render()}})),
+      h('div',{class:'note',textContent:'Start fresh wipes your budget and net worth. Currency and TFSA settings stay.'}),
+      h('div',null,fresh)
     );
   };
   render();
@@ -774,7 +1068,10 @@ function buildSettings(){
 /* ---------- wiring ---------- */
 $('fit').onclick=fit;
 $('gear').onclick=()=>openCard({kind:'settings'});
+$('m-budget').onclick=()=>setMode('budget');
+$('m-worth').onclick=()=>setMode('worth');
 $('add').onclick=()=>{
+  if(S.mode==='worth'){openCard({kind:'add'});return}
   const used=new Set(S.nodes.map(n=>n.color));
   const color=PALETTE.find(c=>!used.has(c))||PALETTE[S.nodes.length%PALETTE.length];
   const n={id:uid(),title:'New expense',color,items:[]};
