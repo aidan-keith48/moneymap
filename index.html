@@ -142,6 +142,18 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 .picker{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .chip{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:1px solid var(--line);background:#1a1915;border-radius:14px;text-align:left;font-size:13px;font-weight:600;line-height:1.2}
 .chip:hover{border-color:var(--c)}
+.hist{display:flex;flex-direction:column;gap:10px}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:#24221d;stroke-width:1}
+.chart .zero{stroke:#3a372f;stroke-dasharray:3 4}
+.chart .ax{fill:var(--mute);font-size:10px;font-family:var(--body)}
+.chart .lbl{fill:var(--ink);font-size:12px;font-weight:700;font-family:var(--display)}
+.snaps{display:grid;grid-template-columns:76px 1fr 1fr 1fr 28px;gap:6px;align-items:center;font-size:13px;font-variant-numeric:tabular-nums}
+.snaps .hd{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.snaps .r{text-align:right}
+.snaps .b{font-weight:600}
+.snaps small{display:block;color:var(--mute);font-size:10px}
+.linkish{border:0;background:none;padding:0;color:var(--gold);font-weight:600;text-decoration:underline}
 .linkbtn{height:30px;border-radius:15px;padding:0 12px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#1a1915;margin-left:auto}
 .linkbtn:hover{border-color:var(--mute)}
 .linkbtn.on{color:var(--good);border-color:#2f4a38}
@@ -785,6 +797,10 @@ function renderNotice(){
   const box=$('notice');let kids=null;
   if(S.mode==='worth'&&hasExamples())
     kids=[h('span',{textContent:'Showing example figures.'}),h('button',{class:'btn',id:'notice-clear',textContent:'Clear examples',onclick:clearExamples})];
+  else if(S.mode==='worth'&&needsSnapshot())
+    kids=[h('span',{textContent:'New month. Save a net worth snapshot?'}),
+      h('button',{class:'btn main',id:'notice-snap',textContent:'Save snapshot',onclick:()=>{takeSnapshot()}}),
+      h('button',{class:'btn',id:'notice-later',textContent:'Not now',onclick:()=>{S.worth.lastPrompt=todayISO().slice(0,7);commit()}})];
   box.classList.toggle('show',!!kids);box.replaceChildren(...(kids||[]));
 }
 
@@ -958,14 +974,98 @@ function buildWorthCard(ref){
   return body;
 }
 
+// Saves today's totals. A second save on the same day replaces that day's snapshot.
+function takeSnapshot(){
+  const w=S.worth,nw=Money.netWorth(w.assets,w.debts,S),date=todayISO(),r=v=>Math.round(v*100)/100;
+  const snap={id:uid(),date,assets:r(nw.assets),liabilities:r(nw.liabilities),net:r(nw.net),circles:[
+    ...w.assets.map(c=>({id:c.id,title:c.title,side:'a',total:r(Money.circleTotal(c,'a',S))})),
+    ...w.debts.map(c=>({id:c.id,title:c.title,side:'d',total:r(Money.circleTotal(c,'d',S))}))]};
+  const i=w.snapshots.findIndex(s=>s.date===date&&!s.ex);
+  if(i>-1)w.snapshots[i]=snap;else w.snapshots.push(snap);
+  w.snapshots.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  w.lastPrompt=date.slice(0,7);
+  commit();
+  return i>-1;
+}
+// Prompt once a month, only for real data that has no snapshot this month yet.
+function needsSnapshot(){
+  const w=S.worth,m=todayISO().slice(0,7);
+  return (w.assets.length+w.debts.length>0)&&!w.assets.some(c=>c.ex)&&!w.debts.some(c=>c.ex)
+    &&w.lastPrompt!==m&&!w.snapshots.some(s=>!s.ex&&s.date.startsWith(m));
+}
+
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Net worth over time as an inline SVG: faint grid, gold line with area fill, emphasised latest point.
+function chartSVG(snaps){
+  const W=360,H=190,L=54,R=16,T=24,B=26;
+  const xs=snaps.map(s=>Money.dayNum(s.date)),ys=snaps.map(s=>s.net);
+  let lo=Math.min(...ys),hi=Math.max(...ys);
+  if(hi===lo){const d=Math.abs(hi)*.1||1;lo-=d;hi+=d}
+  const pad=(hi-lo)*.12;lo-=pad;hi+=pad;
+  const x0=Math.min(...xs),x1=Math.max(...xs);
+  const X=v=>x1===x0?(L+W-R)/2:L+(v-x0)/(x1-x0)*(W-L-R),Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  const f=v=>v.toFixed(1);
+  let grid='';
+  for(let i=0;i<=3;i++){
+    const v=lo+(hi-lo)*i/3,y=f(Y(v));
+    grid+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="ax" x="${L-8}" y="${y}" text-anchor="end" dominant-baseline="middle">${esc(compact(v))}</text>`;
+  }
+  if(lo<0&&hi>0){const y=f(Y(0));grid+=`<line class="zero" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/>`}
+  const P=snaps.map((s,i)=>[X(xs[i]),Y(s.net)]),last=P[P.length-1];
+  const line=P.map((p,i)=>(i?'L':'M')+f(p[0])+' '+f(p[1])).join(' ');
+  const area=P.length>1?`<path d="${line} L${f(last[0])} ${H-B} L${f(P[0][0])} ${H-B} Z" fill="url(#nwfill)"/>`:'';
+  const mon=iso=>new Date(iso+'T12:00:00').toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+  const xl=P.length>1
+    ?`<text class="ax" x="${f(P[0][0])}" y="${H-6}">${esc(mon(snaps[0].date))}</text><text class="ax" x="${f(last[0])}" y="${H-6}" text-anchor="end">${esc(mon(snaps[snaps.length-1].date))}</text>`
+    :`<text class="ax" x="${f(last[0])}" y="${H-6}" text-anchor="middle">${esc(mon(snaps[0].date))}</text>`;
+  const pt=`<circle cx="${f(last[0])}" cy="${f(last[1])}" r="10" fill="${GOLD}" opacity=".18"/>`
+    +`<circle id="chart-latest" cx="${f(last[0])}" cy="${f(last[1])}" r="4.5" fill="${GOLD}" stroke="#13120f" stroke-width="2"/>`
+    +`<text class="lbl" x="${f(last[0]-8)}" y="${f(last[1]-12)}" text-anchor="end">${esc(compact(snaps[snaps.length-1].net))}</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Net worth over time, ${snaps.length} snapshots">`
+    +`<defs><linearGradient id="nwfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${GOLD}" stop-opacity=".32"/><stop offset="1" stop-color="${GOLD}" stop-opacity="0"/></linearGradient></defs>`
+    +`${grid}${area}<path d="${line}" fill="none" stroke="${GOLD}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${xl}${pt}</svg>`;
+}
+
 function buildWorthHub(){
-  const nw=Money.netWorth(S.worth.assets,S.worth.debts,S);
-  const total=h('div',{class:'total',textContent:money(nw.net)});
-  if(nw.net<0)total.style.color='var(--bad)';
-  const sub=h('div',{class:'sub'},h('span',{textContent:money(nw.assets)+' assets'}),h('span',{textContent:money(nw.liabilities)+' debts'}));
-  const g=Money.gainTotal(S.worth.assets.flatMap(c=>c.items),S);
-  if(g)sub.append(h('span',{class:'gain '+(g.gain>=0?'up':'down'),textContent:`${signed(g.gain)} (${pctS(g.pct)}) on cost`}));
-  const list=h('div',{class:'list'});
+  const total=h('div',{class:'total'}),sub=h('div',{class:'sub'}),list=h('div',{class:'list'});
+  const hist=h('div',{class:'hist'}),msg=h('div',{class:'note',id:'snap-msg',role:'status'});
+  const sortSnaps=()=>S.worth.snapshots.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  const update=()=>{
+    const nw=Money.netWorth(S.worth.assets,S.worth.debts,S);
+    total.textContent=money(nw.net);total.style.color=nw.net<0?'var(--bad)':'';
+    sub.replaceChildren(h('span',{textContent:money(nw.assets)+' assets'}),h('span',{textContent:money(nw.liabilities)+' debts'}));
+    const g=Money.gainTotal(S.worth.assets.flatMap(c=>c.items),S);
+    if(g)sub.append(h('span',{class:'gain '+(g.gain>=0?'up':'down'),textContent:`${signed(g.gain)} (${pctS(g.pct)}) on cost`}));
+  };
+  const renderHist=()=>{
+    const snaps=S.worth.snapshots;
+    hist.replaceChildren(h('div',{class:'sec',textContent:'Net worth over time'}));
+    if(!snaps.length)hist.append(h('div',{class:'empty',textContent:'No snapshots yet. Save one now, then once a month, to see your trend.'}));
+    else{
+      const box=h('div',{id:'chart'});box.innerHTML=chartSVG(snaps);hist.append(box);
+      if(snaps.length===1)hist.append(h('div',{class:'note',textContent:'Save another snapshot next month to see a line.'}));
+    }
+    hist.append(msg);
+    if(!snaps.length)return;
+    const t=h('div',{class:'snaps',id:'snaps'},['Date','Assets','Debts','Net',''].map((x,i)=>h('div',{class:'hd'+(i&&i<4?' r':''),textContent:x})));
+    for(const s of [...snaps].reverse()){
+      t.append(
+        h('div',{textContent:new Date(s.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})},s.ex?h('small',{textContent:'example'}):''),
+        h('div',{class:'r',textContent:compact(s.assets)}),h('div',{class:'r',textContent:compact(s.liabilities)}),
+        h('div',{class:'r b',textContent:compact(s.net)}),
+        h('button',{class:'del',id:'del-snap-'+s.id,textContent:'✕','aria-label':'Delete snapshot from '+fmtDate(s.date),onclick:()=>{
+          const i=S.worth.snapshots.indexOf(s);if(i<0)return;
+          S.worth.snapshots.splice(i,1);commit();
+          msg.replaceChildren(`Deleted the ${fmtDate(s.date)} snapshot. `,h('button',{class:'linkish',id:'undo-snap',textContent:'Undo',onclick:()=>{
+            if(!S.worth.snapshots.includes(s)){S.worth.snapshots.push(s);sortSnaps();commit()}
+            msg.replaceChildren();renderHist();
+          }}));
+          renderHist();
+        }}));
+    }
+    hist.append(t);
+  };
+  list.append(hist);
   for(const [label,group,side] of [['Assets',S.worth.assets,'a'],['Liabilities',S.worth.debts,'d']]){
     if(!group.length)continue;
     list.append(h('div',{class:'sec',textContent:label}));
@@ -974,10 +1074,15 @@ function buildWorthHub(){
       r.style.setProperty('--c',c.color);list.append(r);
     }
   }
-  if(!list.children.length)list.append(h('div',{class:'empty',textContent:'Tap + to add what you own and what you owe.'}));
+  const snapBtn=h('button',{class:'btn main',id:'snap',textContent:'Save snapshot',onclick:()=>{
+    const replaced=takeSnapshot();
+    msg.textContent=replaced?'Updated today’s snapshot.':'Snapshot saved.';
+    renderHist();
+  }});
+  update();renderHist();
   return h('div',{class:'cbody'},
     h('div',{class:'chead'},h('span',{class:'dot'}),h('h2',{class:'title-in',textContent:'Net worth'}),xBtn()),
-    h('div',{class:'sum'},total,sub),list);
+    h('div',{class:'sum'},total,sub),list,h('div',{class:'cfoot'},snapBtn));
 }
 
 function buildPicker(){
