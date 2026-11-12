@@ -142,6 +142,15 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 .picker{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .chip{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:1px solid var(--line);background:#1a1915;border-radius:14px;text-align:left;font-size:13px;font-weight:600;line-height:1.2}
 .chip:hover{border-color:var(--c)}
+.tfsa{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:16px;background:#171612}
+.tf-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.tf-row b{color:var(--ink);font-size:14px}
+.tf-in{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tf-field{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--mute)}
+.prog{height:8px;border-radius:4px;background:#24221d;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--c);border-radius:4px;transition:width .3s ease}
+.prog.over i{background:var(--bad)}
+.tf-room{font-size:13px;font-weight:600}
 .brk{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center;font-size:14px}
 .brk b{font-weight:600;font-variant-numeric:tabular-nums}
 
@@ -298,7 +307,7 @@ const allItems=()=>[S.income,...S.nodes.map(n=>n.items),...S.worth.assets.map(c=
 const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const todayISO=()=>isoOf(new Date());
 const addDays=(iso,k)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+k);return isoOf(d)};
-const fmtDate=iso=>new Date(iso+'T12:00:00').toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
+const fmtDate=iso=>new Date(iso+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
 /* ---------- state version and migration ---------- */
 function emptyWorth(){return {assets:[],debts:[],offsets:{},snapshots:[],lastPrompt:null}}
@@ -743,6 +752,42 @@ function renderNotice(){
   box.classList.toggle('show',!!kids);box.replaceChildren(...(kids||[]));
 }
 
+// TFSA allowance panel: contributions against the annual and lifetime limits for the current SA tax year
+function tfsaEl(c,changed){
+  const ty=Money.taxYear(todayISO());
+  const t=c.tfsa||(c.tfsa={year:0,life:0,ty:ty.start});
+  if(t.ty!==ty.start){t.year=0;t.ty=ty.start;save()} // a new tax year starts at zero; lifetime carries on
+  const bar=(id,label)=>{
+    const fill=h('i'),p=h('div',{class:'prog',id,'aria-label':label,'aria-valuemin':'0','aria-valuemax':'100'},fill);
+    p.setAttribute('role','progressbar');return [p,fill];
+  };
+  const [yProg,yFill]=bar('tf-year-bar','Share of this tax year’s limit used'),[lProg,lFill]=bar('tf-life-bar','Share of the lifetime limit used');
+  const yTxt=h('span',{id:'tf-year-txt'}),lTxt=h('span',{id:'tf-life-txt'});
+  const room=h('div',{class:'tf-room',id:'tf-room'}),warn=h('div',{class:'stale',id:'tf-warn'});
+  const field=(label,id,key)=>h('label',{class:'tf-field'},h('span',{textContent:label}),
+    amtInput({id,value:t[key]||'',oninput:e=>{t[key]=Math.max(0,num(e.target.value));upd();changed()}}));
+  const upd=()=>{
+    const L=S.tfsaLimits,r=Money.tfsa(t.year,t.life,L);
+    yFill.style.width=r.yearPct+'%';lFill.style.width=r.lifePct+'%';
+    yProg.classList.toggle('over',r.overYear);lProg.classList.toggle('over',r.overLife);
+    yProg.setAttribute('aria-valuenow',Math.round(r.yearPct));lProg.setAttribute('aria-valuenow',Math.round(r.lifePct));
+    yTxt.textContent=`${money(t.year)} of ${money(L.annual)}`;
+    lTxt.textContent=`${money(t.life)} of ${money(L.lifetime)}`;
+    room.textContent=`${money(r.room)} room left this tax year`;
+    warn.textContent=r.overYear||r.overLife?'Over the limit. SARS taxes excess contributions at 40%.'
+      :t.year>t.life?'Lifetime contributions should include this tax year’s.':'';
+  };
+  const el=h('div',{class:'tfsa',id:'tfsa'},
+    h('div',{class:'tf-row'},h('b',{textContent:'Tax-free allowance'}),h('span',{id:'tf-label',textContent:`Tax year ${ty.label}`})),
+    h('div',{class:'note',id:'tf-dates',textContent:`${fmtDate(ty.from)} to ${fmtDate(ty.to)}`}),
+    h('div',{class:'tf-in'},field('Contributed this tax year','tf-year','year'),field('Lifetime contributions','tf-life','life')),
+    h('div',{class:'tf-row'},h('span',{textContent:'This tax year'}),yTxt),yProg,
+    h('div',{class:'tf-row'},h('span',{textContent:'Lifetime'}),lTxt),lProg,
+    room,warn);
+  upd();
+  return {el,update:upd};
+}
+
 function holdingEl(it,{items,changed,rerender}){
   const today=todayISO(),units=it.mode==='units';
   const wrap=h('div',{class:'row hold'});
@@ -837,7 +882,8 @@ function buildWorthCard(ref){
   const renderRows=()=>{
     list.replaceChildren();
     if(c.ex)list.append(exNote);
-    extra=null;
+    extra=side==='a'&&c.kind==='tfsa'?tfsaEl(c,changed):null;
+    if(extra)list.append(extra.el);
     if(!items.length)list.append(h('div',{class:'empty',textContent:side==='a'?'Add what you own here, like an account, fund or property.':'Add what you owe here, like a loan or a card balance.'}));
     items.forEach(it=>list.append(side==='a'?holdingEl(it,ctx):debtEl(it,ctx)));
   };
@@ -1018,6 +1064,12 @@ function buildSettings(){
       let c='NEW',n=1;while(S.rates[c]||c===S.base)c='NEW'+(++n);
       S.rates[c]=1;save();render();
     }})));
+    const limit=(label,id,key)=>h('label',{class:'tf-field'},h('span',{textContent:label}),
+      amtInput({id,value:S.tfsaLimits[key],oninput:e=>{S.tfsaLimits[key]=Math.max(0,num(e.target.value));commit()}}));
+    list.append(
+      h('div',{class:'sec',textContent:'TFSA limits'}),
+      h('div',{class:'note',textContent:'Defaults are R46,000 per tax year and R500,000 lifetime. Change them here if the rules change.'}),
+      h('div',{class:'tf-in'},limit('Per tax year','lim-annual','annual'),limit('Lifetime','lim-life','lifetime')));
     let armed=false,t;
     const fresh=h('button',{class:'btn danger',style:'margin-left:0',id:'fresh',textContent:'Start fresh',onclick:()=>{
       if(!armed){armed=true;fresh.textContent='Tap again to wipe';fresh.classList.add('armed');t=setTimeout(()=>{armed=false;fresh.textContent='Start fresh';fresh.classList.remove('armed')},2600);return}
