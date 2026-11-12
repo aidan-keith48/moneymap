@@ -142,6 +142,10 @@ select.f{padding:0 4px;appearance:none;text-align:center;background:#1a1915}
 .picker{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .chip{display:flex;align-items:center;gap:10px;min-height:46px;padding:8px 12px;border:1px solid var(--line);background:#1a1915;border-radius:14px;text-align:left;font-size:13px;font-weight:600;line-height:1.2}
 .chip:hover{border-color:var(--c)}
+.linkbtn{height:30px;border-radius:15px;padding:0 12px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#1a1915;margin-left:auto}
+.linkbtn:hover{border-color:var(--mute)}
+.linkbtn.on{color:var(--good);border-color:#2f4a38}
+.f:disabled{opacity:.6}
 .tfsa{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:16px;background:#171612}
 .tf-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .tf-row b{color:var(--ink);font-size:14px}
@@ -543,7 +547,7 @@ function renderMap(){
   const key=S.mode+':'+list.length;
   if(lastKey!==key){lastKey=key;fit()}
 }
-function commit(){save();renderMap()}
+function commit(){syncLinks();save();renderMap()}
 
 /* ---------- pan / zoom ---------- */
 const ptrs=new Map();let drag=null,moved=false,pinch=null,grab=null;
@@ -714,6 +718,11 @@ function rowEl(items,it,changed,rerender){
       h('span',{textContent:S.base}),conv);
     wrap.append(rateBox);
   }
+  if(it.link){
+    // mirrors a liability's monthly payment, so it is edited in Net worth only
+    wrap.querySelectorAll('input,select').forEach(e=>{e.disabled=true});
+    wrap.append(h('div',{class:'rate',id:'linked-'+it.id,textContent:'Synced from Net worth. Change the payment there.'}));
+  }
   upd();
   return wrap;
 }
@@ -743,6 +752,33 @@ function addExamples(){
   w.assets.push(...ex.assets);w.debts.push(...ex.debts);w.snapshots.push(...ex.snapshots);
   w.snapshots.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   commit();
+}
+const linkedItem=id=>{for(const n of S.nodes){const it=n.items.find(i=>i.link===id);if(it)return it}return null};
+function addDebtToBudget(d){
+  if(linkedItem(d.id))return; // never counted twice
+  let n=S.nodes.find(x=>x.debts)||S.nodes.find(x=>x.title.trim().toLowerCase()==='debt repayments');
+  if(!n){
+    const used=new Set(S.nodes.map(x=>x.color));
+    n={id:uid(),title:'Debt repayments',color:PALETTE.find(c=>!used.has(c))||PALETTE[6],items:[]};
+    S.nodes.push(n);
+  }
+  n.debts=true;
+  n.items.push({...item(d.name,0,d.cur),link:d.id});
+}
+function unlinkDebt(id){for(const n of S.nodes)for(let i=n.items.length-1;i>=0;i--)if(n.items[i].link===id)n.items.splice(i,1)}
+// Linked budget items mirror their liability's monthly payment. They are removed when the debt,
+// or its payment, goes away. Runs on every commit; arrays are changed in place so open cards stay valid.
+function syncLinks(){
+  const debts=new Map();
+  for(const c of S.worth.debts)for(const d of c.items)debts.set(d.id,{d,c});
+  const seen=new Set();
+  for(const n of S.nodes)for(let i=n.items.length-1;i>=0;i--){
+    const it=n.items[i];if(!it.link)continue;
+    const x=debts.get(it.link);
+    if(!x||!(num(x.d.payment)>0)||seen.has(it.link)){n.items.splice(i,1);continue}
+    seen.add(it.link);
+    it.name=x.d.name||x.c.title;it.amount=num(x.d.payment);it.cur=x.d.cur;it.rate=x.d.rate??null;
+  }
 }
 function setMode(m){if(S.mode===m)return;S.mode=m;save();renderMap()}
 function renderNotice(){
@@ -844,8 +880,21 @@ function debtEl(it,{items,changed,rerender}){
       oninput:e=>{const v=num(e.target.value);it.apr=v>0?v:null;changed()}}),
     h('span',{textContent:'% a year'}),
     amtInput({id:'pay-'+it.id,value:it.payment||'',placeholder:'optional','aria-label':'Monthly payment',
-      oninput:e=>{const v=num(e.target.value);it.payment=v>0?v:null;changed()}}),
+      oninput:e=>{const v=num(e.target.value);it.payment=v>0?v:null;changed();paintLink()}}),
     h('span',{textContent:'a month'}));
+  // one tap puts the monthly payment into the budget's "Debt repayments" circle, kept in sync from then on
+  const linkBtn=h('button',{type:'button',class:'linkbtn',id:'link-'+it.id,onclick:()=>{
+    if(linkedItem(it.id))unlinkDebt(it.id);else addDebtToBudget(it);
+    changed();paintLink();
+  }});
+  const paintLink=()=>{
+    const has=num(it.payment)>0,on=has&&!!linkedItem(it.id);
+    linkBtn.hidden=!has;
+    linkBtn.textContent=on?'✓ In budget':'+ Add to budget';
+    linkBtn.classList.toggle('on',on);
+    linkBtn.title=on?'In your "Debt repayments" budget circle. Tap to take it out.':'Add this monthly payment to your budget';
+  };
+  line.append(linkBtn);paintLink();
   wrap.append(line);
   const fx=fxLine(it,conv,upd,changed);if(fx)wrap.append(fx);
   upd();
