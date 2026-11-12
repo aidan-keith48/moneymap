@@ -1,8 +1,15 @@
 # Moneymap
 
-A mind-map budget tracker in a single HTML file. One gold income circle sits in the centre with expense circles around it. Tap a circle to open its items, amounts and currency conversion, or drag it to move it. Your data is saved in your browser only.
+A budget and net worth tracker drawn as a mind map, in a single HTML file.
 
-**Live:** https://<username>.github.io/moneymap/
+- **Budget:** a gold income circle in the centre with expense circles around it.
+- **Net worth:** assets (stocks, TFSA, retirement, crypto, cash, property) and liabilities (home loan, vehicle finance, credit card, student loan) around your net worth. It includes TFSA allowance tracking, gain or loss on cost, monthly snapshots and a history chart.
+
+Tap a circle to open it and drag it to move it. The eye button hides every amount.
+
+**Your data is saved in your browser only.** Clearing site data deletes it, so use Settings → Export JSON to keep a backup.
+
+**Live:** https://aidan-keith48.github.io/moneymap/
 
 ## Run locally
 
